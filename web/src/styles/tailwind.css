@@ -79,7 +79,8 @@
   --bg-primary: #FFFFFF;
   --bg-secondary: #F8FAFC;
   --bg-tertiary: #F1F5F9;
-  --bg-gradient-main: linear-gradient(to bottom right, #F8FAFC 0%, #E0E7FF 50%, #DBEAFE 100%);
+  /* Subtle modern gradient - clean, professional, minimal */
+  --bg-gradient-main: linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 25%, #F3F4F6 50%, #FAFBFC 75%, #FFFFFF 100%);
   --bg-gradient-card: linear-gradient(to bottom, #FFFFFF 0%, #F9FAFB 100%);
 }
 
