@@ -196,6 +196,76 @@ export function enhanceSlideSpec(spec: any): any {
     }
   }
 
+  // FIX LAYOUT ISSUES
+  spec = fixLayoutIssues(spec);
+
+  return spec;
+}
+
+/**
+ * Fix common layout issues in generated specs
+ */
+function fixLayoutIssues(spec: any): any {
+  logger.info("fixLayoutIssues called", {
+    hasLayout: !!spec.layout,
+    hasRegions: !!spec.layout?.regions,
+    hasAnchors: !!spec.layout?.anchors,
+    hasTitle: !!spec.content?.title?.text,
+    hasSubtitle: !!spec.content?.subtitle?.text
+  });
+
+  if (!spec.layout?.regions || !spec.layout?.anchors) {
+    logger.warn("No layout regions or anchors found");
+    return spec;
+  }
+
+  const hasSubtitle = !!spec.content?.subtitle?.text;
+  const hasTitle = !!spec.content?.title?.text;
+
+  // Find header region
+  const headerRegion = spec.layout.regions.find((r: any) => r.name === "header");
+
+  logger.info("Header region check", {
+    headerRegionExists: !!headerRegion,
+    headerRowSpan: headerRegion?.rowSpan,
+    hasTitle,
+    hasSubtitle
+  });
+
+  if (headerRegion && hasTitle && hasSubtitle) {
+    // If header has both title and subtitle but only 1 row, expand it to 2 rows
+    if (headerRegion.rowSpan === 1) {
+      logger.info("Expanding header region from 1 to 2 rows for title + subtitle");
+      headerRegion.rowSpan = 2;
+
+      // Adjust body region if it exists
+      const bodyRegion = spec.layout.regions.find((r: any) => r.name === "body");
+      if (bodyRegion && bodyRegion.rowStart === 2) {
+        logger.info("Adjusting body region");
+        bodyRegion.rowStart = 3;
+        bodyRegion.rowSpan = Math.max(1, bodyRegion.rowSpan - 1);
+      }
+
+      // Adjust aside region if it exists
+      const asideRegion = spec.layout.regions.find((r: any) => r.name === "aside");
+      if (asideRegion && asideRegion.rowStart === 2) {
+        logger.info("Adjusting aside region");
+        asideRegion.rowStart = 3;
+        asideRegion.rowSpan = Math.max(1, asideRegion.rowSpan - 1);
+      }
+    }
+  }
+
+  // Validate all anchors have corresponding regions
+  const regionNames = new Set(spec.layout.regions.map((r: any) => r.name));
+  spec.layout.anchors = spec.layout.anchors.filter((a: any) => {
+    if (!regionNames.has(a.region)) {
+      logger.warn(`Removing anchor ${a.refId} with non-existent region ${a.region}`);
+      return false;
+    }
+    return true;
+  });
+
   return spec;
 }
 

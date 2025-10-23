@@ -1,6 +1,7 @@
 /**
  * Advanced Typography Effects
  * Text gradients, shadows, multi-column layouts, smart text fitting
+ * Professional typography hierarchy and styling
  */
 
 import PptxGenJS from "pptxgenjs";
@@ -357,5 +358,238 @@ export function getFontPairing(style: "professional" | "elegant" | "modern" | "b
   };
   
   return pairings[style] || pairings.professional;
+}
+
+/**
+ * Add professional heading with hierarchy
+ */
+export function addProfessionalHeading(
+  slide: any,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  level: 1 | 2 | 3 = 1,
+  color: string = "#0F172A",
+  fontFace: string = "Inter, Arial, sans-serif"
+): void {
+  const sizes: Record<number, number> = {
+    1: 44,
+    2: 32,
+    3: 24
+  };
+
+  const weights: Record<number, boolean> = {
+    1: true,
+    2: true,
+    3: false
+  };
+
+  const lineHeights: Record<number, number> = {
+    1: 120,
+    2: 130,
+    3: 140
+  };
+
+  slide.addText(text, {
+    x,
+    y,
+    w: width,
+    h: sizes[level] * 0.1,
+    fontSize: sizes[level],
+    bold: weights[level],
+    color,
+    fontFace,
+    align: "left",
+    valign: "top",
+    lineSpacing: lineHeights[level],
+    wrap: true
+  });
+}
+
+/**
+ * Add professional body text with optimal readability
+ */
+export function addProfessionalBody(
+  slide: any,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  color: string = "#334155",
+  fontFace: string = "Inter, Arial, sans-serif",
+  fontSize: number = 16
+): void {
+  slide.addText(text, {
+    x,
+    y,
+    w: width,
+    h: height,
+    fontSize,
+    color,
+    fontFace,
+    align: "left",
+    valign: "top",
+    lineSpacing: 150,
+    wrap: true
+  });
+}
+
+/**
+ * Add emphasized text with accent color
+ */
+export function addEmphasisText(
+  slide: any,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  accentColor: string = "#6366F1",
+  fontFace: string = "Inter, Arial, sans-serif"
+): void {
+  slide.addText(text, {
+    x,
+    y,
+    w: width,
+    h: height,
+    fontSize: 18,
+    bold: true,
+    color: accentColor,
+    fontFace,
+    align: "left",
+    valign: "middle",
+    wrap: true,
+    shadow: {
+      type: "outer",
+      color: accentColor.replace("#", ""),
+      opacity: 0.15,
+      blur: 4,
+      offset: 1
+    }
+  });
+}
+
+/**
+ * Add caption text (small, subtle)
+ */
+export function addCaptionText(
+  slide: any,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  color: string = "#94A3B8",
+  fontFace: string = "Inter, Arial, sans-serif"
+): void {
+  slide.addText(text, {
+    x,
+    y,
+    w: width,
+    h: 0.25,
+    fontSize: 11,
+    color,
+    fontFace,
+    align: "left",
+    valign: "top"
+  });
+}
+
+/**
+ * Add label text (for annotations and callouts)
+ */
+export function addLabelText(
+  slide: any,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  color: string = "#64748B",
+  fontFace: string = "Inter, Arial, sans-serif"
+): void {
+  slide.addText(text, {
+    x,
+    y,
+    w: width,
+    h: 0.3,
+    fontSize: 12,
+    bold: true,
+    color,
+    fontFace,
+    align: "left",
+    valign: "middle",
+    letterSpacing: 0.5
+  });
+}
+
+/**
+ * Calculate optimal line height for readability
+ */
+export function getOptimalLineHeight(fontSize: number): number {
+  // Golden ratio for typography: 1.5 for body, 1.2 for headings
+  if (fontSize >= 32) {
+    return 120; // Headings
+  } else if (fontSize >= 20) {
+    return 130; // Subheadings
+  } else {
+    return 150; // Body text
+  }
+}
+
+/**
+ * Get recommended font size for content type
+ */
+export function getRecommendedFontSize(contentType: "title" | "subtitle" | "body" | "caption" | "label"): number {
+  const sizes: Record<string, number> = {
+    title: 44,
+    subtitle: 28,
+    body: 16,
+    caption: 11,
+    label: 12
+  };
+
+  return sizes[contentType] || 16;
+}
+
+/**
+ * Create typography hierarchy configuration
+ */
+export function createTypographyHierarchy(
+  baseSize: number = 16,
+  fontFace: string = "Inter, Arial, sans-serif"
+): Record<string, any> {
+  return {
+    title: {
+      fontSize: baseSize * 2.75,
+      fontWeight: 700,
+      lineHeight: 120,
+      letterSpacing: -0.5
+    },
+    subtitle: {
+      fontSize: baseSize * 1.75,
+      fontWeight: 600,
+      lineHeight: 130,
+      letterSpacing: 0
+    },
+    body: {
+      fontSize: baseSize,
+      fontWeight: 400,
+      lineHeight: 150,
+      letterSpacing: 0
+    },
+    caption: {
+      fontSize: baseSize * 0.75,
+      fontWeight: 400,
+      lineHeight: 140,
+      letterSpacing: 0.5
+    },
+    label: {
+      fontSize: baseSize * 0.75,
+      fontWeight: 600,
+      lineHeight: 140,
+      letterSpacing: 0.5
+    }
+  };
 }
 

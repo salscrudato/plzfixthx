@@ -1,18 +1,23 @@
-import { useCallback, useEffect } from "react";
-import { normalizeOrFallback } from "@/lib/validation";
-import { SlideCanvas } from "@/components/SlideCanvas";
-import { LoadingSkeleton } from "@/components/LoadingSkeleton";
+import { useCallback, useEffect, useState } from "react";
+import { SlideEditor } from "@/components/SlideEditor";
 import { ProgressIndicator } from "@/components/ProgressIndicator";
 import { ToastContainer, useToast } from "@/components/Toast";
 import { SlideChat } from "@/components/SlideChat";
 import { useSlideGeneration } from "@/hooks/useSlideGeneration";
 import { useSlideExport } from "@/hooks/useSlideExport";
-import { Download, Loader } from "lucide-react";
+import type { SlideSpecV1 } from "@/types/SlideSpecV1";
 
 export default function App() {
   const { loading, spec, error, generate } = useSlideGeneration();
-  const { exporting, exportSlide } = useSlideExport();
+  const { exportSlide } = useSlideExport();
   const toast = useToast();
+  const [currentSpec, setCurrentSpec] = useState<SlideSpecV1 | null>(null);
+
+  useEffect(() => {
+    if (spec) {
+      setCurrentSpec(spec);
+    }
+  }, [spec]);
 
   const handleChatReady = useCallback(async (slidePrompt: string) => {
     const result = await generate(slidePrompt);
@@ -27,16 +32,20 @@ export default function App() {
     }
   }, [error]);
 
-  const handleDownload = useCallback(async () => {
-    if (!spec) return;
+  const handleSlideUpdate = useCallback((updatedSpec: SlideSpecV1) => {
+    setCurrentSpec(updatedSpec);
+  }, []);
 
-    const success = await exportSlide(spec);
+  const handleDownload = useCallback(async () => {
+    if (!currentSpec) return;
+
+    const success = await exportSlide(currentSpec);
     if (success) {
       toast.success("PowerPoint downloaded successfully!");
     } else {
       toast.error("Failed to download PowerPoint");
     }
-  }, [spec, exportSlide, toast]);
+  }, [currentSpec, exportSlide, toast]);
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--bg-gradient-main)' }}>
@@ -68,63 +77,28 @@ export default function App() {
         <main id="main-content" className="animate-scale-in max-w-4xl mx-auto w-full">
           <SlideChat onSlideReady={handleChatReady} isGenerating={loading} />
         </main>
-        {/* Preview Card - Only show if slide is generated */}
-        {(spec || loading) && (
-          <div className="glass rounded-[var(--radius-2xl)] p-6 sm:p-8 lg:p-10 space-y-6 animate-scale-in max-w-5xl mx-auto">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-[var(--neutral-1)]">
-                Preview
-              </h2>
-              {spec && !loading && (
-                <div className="flex items-center gap-2 text-sm text-[var(--color-success)]">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span className="font-medium">Ready</span>
-                </div>
-              )}
-            </div>
 
-            {loading && (
-              <div className="mb-6">
+        {/* Slide Editor with Live Preview and Edit Chat */}
+        {(currentSpec || loading) && (
+          <div className="animate-scale-in max-w-7xl mx-auto w-full">
+            {loading ? (
+              <div className="glass rounded-[var(--radius-2xl)] p-6 sm:p-8 lg:p-10 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold text-[var(--neutral-1)]">
+                    Creating your slide...
+                  </h2>
+                </div>
                 <ProgressIndicator isLoading={loading} />
               </div>
-            )}
-
-            <div className="relative">
-              {loading ? (
-                <LoadingSkeleton />
-              ) : (
-                <div className="rounded-[var(--radius-xl)] overflow-hidden shadow-2xl border border-[var(--neutral-7)]">
-                  <SlideCanvas spec={spec || normalizeOrFallback(null)} />
-                </div>
-              )}
-            </div>
-
-            {/* Download Button - Inline with preview */}
-            {spec && !loading && (
-              <div className="flex gap-4 justify-center pt-4">
-                <button
-                  onClick={handleDownload}
-                  disabled={exporting}
-                  className="btn-secondary group px-10 py-4 text-base text-white rounded-[var(--radius-xl)] font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 shadow-lg hover:shadow-xl transition-all"
-                  aria-label="Download PowerPoint file"
-                  style={{ minWidth: '220px' }}
-                >
-                  {exporting ? (
-                    <>
-                      <Loader size={20} className="animate-spin" />
-                      <span>Exporting...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Download size={20} className="group-hover:animate-bounce" />
-                      <span>Download .pptx</span>
-                    </>
-                  )}
-                </button>
+            ) : currentSpec ? (
+              <div className="space-y-6">
+                <SlideEditor
+                  spec={currentSpec}
+                  onUpdate={handleSlideUpdate}
+                  onExport={handleDownload}
+                />
               </div>
-            )}
+            ) : null}
           </div>
         )}
       </div>

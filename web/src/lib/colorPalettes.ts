@@ -148,6 +148,87 @@ export const PROFESSIONAL_PALETTES: Record<string, ColorPalette> = {
     use: "Classic, timeless, traditional",
     contrast: 7.2,
     psychology: "Tradition, stability, heritage"
+  },
+  sunset: {
+    name: "Sunset & Warmth",
+    primary: "#EA580C",
+    accent: "#F97316",
+    neutral: ["#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0"],
+    use: "Warm, inviting, energetic presentations",
+    contrast: 6.9,
+    psychology: "Warmth, energy, optimism"
+  },
+  ocean: {
+    name: "Ocean & Depth",
+    primary: "#0369A1",
+    accent: "#0EA5E9",
+    neutral: ["#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0"],
+    use: "Water, technology, depth, trust",
+    contrast: 6.6,
+    psychology: "Trust, depth, clarity"
+  },
+  forest: {
+    name: "Forest & Nature",
+    primary: "#15803D",
+    accent: "#22C55E",
+    neutral: ["#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0"],
+    use: "Nature, sustainability, growth",
+    contrast: 6.8,
+    psychology: "Growth, nature, renewal"
+  },
+  midnight: {
+    name: "Midnight & Mystery",
+    primary: "#1E1B4B",
+    accent: "#818CF8",
+    neutral: ["#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0"],
+    use: "Premium, sophisticated, modern",
+    contrast: 7.1,
+    psychology: "Sophistication, mystery, elegance"
+  },
+  rose: {
+    name: "Rose & Elegance",
+    primary: "#BE185D",
+    accent: "#EC4899",
+    neutral: ["#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0"],
+    use: "Fashion, beauty, elegance",
+    contrast: 6.7,
+    psychology: "Elegance, femininity, sophistication"
+  },
+  amber: {
+    name: "Amber & Warmth",
+    primary: "#B45309",
+    accent: "#F59E0B",
+    neutral: ["#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0"],
+    use: "Warmth, hospitality, comfort",
+    contrast: 6.8,
+    psychology: "Warmth, comfort, hospitality"
+  },
+  slate: {
+    name: "Slate & Professional",
+    primary: "#334155",
+    accent: "#64748B",
+    neutral: ["#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0"],
+    use: "Professional, neutral, corporate",
+    contrast: 7.3,
+    psychology: "Professionalism, stability, focus"
+  },
+  indigo: {
+    name: "Indigo & Innovation",
+    primary: "#4F46E5",
+    accent: "#6366F1",
+    neutral: ["#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0"],
+    use: "Technology, innovation, intelligence",
+    contrast: 6.5,
+    psychology: "Innovation, intelligence, creativity"
+  },
+  teal: {
+    name: "Teal & Balance",
+    primary: "#0D9488",
+    accent: "#14B8A6",
+    neutral: ["#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0"],
+    use: "Balance, wellness, modern",
+    contrast: 6.7,
+    psychology: "Balance, wellness, harmony"
   }
 };
 

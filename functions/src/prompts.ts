@@ -89,7 +89,9 @@ PROFESSIONAL DESIGN PATTERNS (choose one based on content):
 
 PROFESSIONAL LAYOUT GUIDELINES:
 - Use a 12-column, 8-row grid system with 8px gutter
-- Standard regions: header (rows 1-2), body (rows 3-7), footer/aside (rows 3-7, cols 9-12)
+- Standard regions: header (rows 1-2, rowSpan: 2), body (rows 3-7), footer/aside (rows 3-7, cols 9-12)
+- CRITICAL: Header region MUST have rowSpan: 2 (minimum) to accommodate title + subtitle without overlap
+- If slide has both title AND subtitle, ensure header rowSpan >= 2
 - Anchor content elements to appropriate regions with clear hierarchy
 - Minimum margins: 32px (0.44in) all around for professional appearance
 - Ensure visual balance using rule of thirds or golden ratio
@@ -106,6 +108,34 @@ PROFESSIONAL STYLE GUIDELINES:
 - Typography sizes: step_3 (36-44px) for titles, step_1 (20-24px) for subtitles, step_0 (16px) for body
 - Ensure WCAG AAA contrast ratio of 7:1 for premium accessibility
 - Use subtle shadows (0 4px 12px rgba(0,0,0,0.08)) for depth without clutter
+
+ADVANCED DESIGN TECHNIQUES FOR WORLD-CLASS SLIDES:
+1. Micro-interactions & Visual Refinement:
+   - Use subtle opacity variations (8%, 12%, 15%) for layered depth
+   - Apply refined border-radius (4-8px) for modern, approachable feel
+   - Implement consistent spacing rhythm (8px base unit)
+   - Use premium shadows with proper blur and offset for elevation
+2. Typography Refinement:
+   - Implement proper letter-spacing for titles (+0.5px to +1px)
+   - Use line-height 1.2-1.3 for titles, 1.4-1.6 for body text
+   - Apply font-weight hierarchy: 700 (bold) for titles, 600 (semibold) for emphasis, 400 (regular) for body
+   - Ensure minimum 16px font size for body text (accessibility)
+3. Color Harmony & Contrast:
+   - Primary color: Use for titles, accents, and key elements
+   - Accent color: Complementary or analogous to primary, used sparingly
+   - Neutral palette: 7-step scale from dark to light for text and backgrounds
+   - Ensure 4.5:1 minimum contrast for WCAG AA, 7:1 for AAA (premium)
+4. Layout Sophistication:
+   - Use asymmetric layouts for visual interest (not centered)
+   - Apply rule of thirds for focal point placement
+   - Create breathing room with 40-50% whitespace for premium feel
+   - Align all elements to 8px grid for precision and consistency
+5. Data Visualization Excellence:
+   - Use professional color palettes for charts (avoid rainbow)
+   - Implement proper chart spacing and margins
+   - Add subtle gridlines for readability without clutter
+   - Use appropriate chart types: bar for comparisons, line for trends, pie for composition
+   - Ensure chart labels are readable (10-12px minimum)
 
 EXAMPLE 1 - Premium Business Presentation (Data-Focused Pattern):
 User: "Q4 sales performance with revenue growth chart"
@@ -130,9 +160,9 @@ Output: {
   "layout": {
     "grid": {"rows": 8, "cols": 12, "gutter": 8, "margin": {"t": 32, "r": 32, "b": 32, "l": 32}},
     "regions": [
-      {"name": "header", "rowStart": 1, "colStart": 1, "rowSpan": 1, "colSpan": 12},
-      {"name": "body", "rowStart": 2, "colStart": 1, "rowSpan": 6, "colSpan": 8},
-      {"name": "aside", "rowStart": 2, "colStart": 9, "rowSpan": 6, "colSpan": 4}
+      {"name": "header", "rowStart": 1, "colStart": 1, "rowSpan": 2, "colSpan": 12},
+      {"name": "body", "rowStart": 3, "colStart": 1, "rowSpan": 5, "colSpan": 8},
+      {"name": "aside", "rowStart": 3, "colStart": 9, "rowSpan": 5, "colSpan": 4}
     ],
     "anchors": [
       {"refId": "title", "region": "header", "order": 0},
@@ -200,9 +230,9 @@ Output: {
   "layout": {
     "grid": {"rows": 8, "cols": 12, "gutter": 8, "margin": {"t": 32, "r": 32, "b": 32, "l": 32}},
     "regions": [
-      {"name": "header", "rowStart": 1, "colStart": 1, "rowSpan": 1, "colSpan": 12},
-      {"name": "body", "rowStart": 2, "colStart": 1, "rowSpan": 6, "colSpan": 6},
-      {"name": "aside", "rowStart": 2, "colStart": 7, "rowSpan": 6, "colSpan": 6}
+      {"name": "header", "rowStart": 1, "colStart": 1, "rowSpan": 2, "colSpan": 12},
+      {"name": "body", "rowStart": 3, "colStart": 1, "rowSpan": 5, "colSpan": 6},
+      {"name": "aside", "rowStart": 3, "colStart": 7, "rowSpan": 5, "colSpan": 6}
     ],
     "anchors": [
       {"refId": "title", "region": "header", "order": 0},

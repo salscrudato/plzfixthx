@@ -212,6 +212,22 @@ export function getRegionsForPattern(pattern: string, spec: SlideSpecV2): Patter
       return applyMinimalPattern(spec);
     case "data-focused":
       return applyDataFocusedPattern(spec);
+    case "sidebar":
+      return applySidebarPattern(spec);
+    case "three-column":
+      return applyThreeColumnPattern(spec);
+    case "two-column-accent":
+      return applyTwoColumnAccentPattern(spec);
+    case "timeline":
+      return applyTimelinePattern(spec);
+    case "centered":
+      return applyCenteredPattern(spec);
+    case "full-bleed":
+      return applyFullBleedPattern(spec);
+    case "comparison":
+      return applyComparisonPattern(spec);
+    case "stacked":
+      return applyStackedPattern(spec);
     default:
       return applySplitPattern(spec);
   }
@@ -270,5 +286,282 @@ export function calculateWhitespacePercentage(regions: PatternRegions): number {
   const whiteSpace = totalArea - usedArea;
 
   return (whiteSpace / totalArea) * 100;
+}
+
+/**
+ * Apply Sidebar Pattern
+ * Content with prominent sidebar for navigation or key points
+ */
+export function applySidebarPattern(spec: SlideSpecV2): PatternRegions {
+  return {
+    header: {
+      x: MARGIN,
+      y: MARGIN,
+      w: SLIDE_WIDTH - 2 * MARGIN,
+      h: 1
+    },
+    sidebar: {
+      x: MARGIN,
+      y: 1.5 + MARGIN,
+      w: 2,
+      h: SLIDE_HEIGHT - 2.5
+    },
+    content: {
+      x: 2.5 + MARGIN,
+      y: 1.5 + MARGIN,
+      w: SLIDE_WIDTH - 3.5 - 2 * MARGIN,
+      h: SLIDE_HEIGHT - 2.5
+    }
+  };
+}
+
+/**
+ * Apply Three Column Pattern
+ * Equal three-column layout for comparison or features
+ */
+export function applyThreeColumnPattern(spec: SlideSpecV2): PatternRegions {
+  const colWidth = (SLIDE_WIDTH - 2 * MARGIN - 0.4) / 3;
+
+  return {
+    header: {
+      x: MARGIN,
+      y: MARGIN,
+      w: SLIDE_WIDTH - 2 * MARGIN,
+      h: 1
+    },
+    item1: {
+      x: MARGIN,
+      y: 1.5 + MARGIN,
+      w: colWidth,
+      h: SLIDE_HEIGHT - 2.5
+    },
+    item2: {
+      x: MARGIN + colWidth + 0.2,
+      y: 1.5 + MARGIN,
+      w: colWidth,
+      h: SLIDE_HEIGHT - 2.5
+    },
+    item3: {
+      x: MARGIN + (colWidth + 0.2) * 2,
+      y: 1.5 + MARGIN,
+      w: colWidth,
+      h: SLIDE_HEIGHT - 2.5
+    }
+  };
+}
+
+/**
+ * Apply Two Column Pattern with Accent
+ * Two columns with accent bar on the side
+ */
+export function applyTwoColumnAccentPattern(spec: SlideSpecV2): PatternRegions {
+  return {
+    header: {
+      x: MARGIN,
+      y: MARGIN,
+      w: SLIDE_WIDTH - 2 * MARGIN,
+      h: 1
+    },
+    left: {
+      x: MARGIN,
+      y: 1.5 + MARGIN,
+      w: (SLIDE_WIDTH - 2 * MARGIN - 0.3) / 2,
+      h: SLIDE_HEIGHT - 2.5
+    },
+    right: {
+      x: MARGIN + (SLIDE_WIDTH - 2 * MARGIN - 0.3) / 2 + 0.3,
+      y: 1.5 + MARGIN,
+      w: (SLIDE_WIDTH - 2 * MARGIN - 0.3) / 2,
+      h: SLIDE_HEIGHT - 2.5
+    }
+  };
+}
+
+/**
+ * Apply Timeline Pattern
+ * Horizontal timeline layout for processes or history
+ */
+export function applyTimelinePattern(spec: SlideSpecV2): PatternRegions {
+  return {
+    header: {
+      x: MARGIN,
+      y: MARGIN,
+      w: SLIDE_WIDTH - 2 * MARGIN,
+      h: 1
+    },
+    item1: {
+      x: MARGIN,
+      y: 2,
+      w: (SLIDE_WIDTH - 2 * MARGIN) / 4,
+      h: SLIDE_HEIGHT - 2.5
+    },
+    item2: {
+      x: MARGIN + (SLIDE_WIDTH - 2 * MARGIN) / 4,
+      y: 2,
+      w: (SLIDE_WIDTH - 2 * MARGIN) / 4,
+      h: SLIDE_HEIGHT - 2.5
+    },
+    item3: {
+      x: MARGIN + (SLIDE_WIDTH - 2 * MARGIN) / 2,
+      y: 2,
+      w: (SLIDE_WIDTH - 2 * MARGIN) / 4,
+      h: SLIDE_HEIGHT - 2.5
+    },
+    item4: {
+      x: MARGIN + (SLIDE_WIDTH - 2 * MARGIN) * 0.75,
+      y: 2,
+      w: (SLIDE_WIDTH - 2 * MARGIN) / 4,
+      h: SLIDE_HEIGHT - 2.5
+    }
+  };
+}
+
+/**
+ * Apply Centered Pattern
+ * Centered content with maximum focus
+ */
+export function applyCenteredPattern(spec: SlideSpecV2): PatternRegions {
+  const contentWidth = SLIDE_WIDTH * 0.6;
+  const contentX = (SLIDE_WIDTH - contentWidth) / 2;
+
+  return {
+    header: {
+      x: contentX,
+      y: MARGIN,
+      w: contentWidth,
+      h: 1.5
+    },
+    content: {
+      x: contentX,
+      y: 2,
+      w: contentWidth,
+      h: SLIDE_HEIGHT - 2.5
+    }
+  };
+}
+
+/**
+ * Apply Full Bleed Pattern
+ * Content extends to edges for maximum impact
+ */
+export function applyFullBleedPattern(spec: SlideSpecV2): PatternRegions {
+  return {
+    content: {
+      x: 0,
+      y: 0,
+      w: SLIDE_WIDTH,
+      h: SLIDE_HEIGHT
+    }
+  };
+}
+
+/**
+ * Apply Comparison Pattern
+ * Side-by-side comparison with divider
+ */
+export function applyComparisonPattern(spec: SlideSpecV2): PatternRegions {
+  const midpoint = SLIDE_WIDTH / 2;
+
+  return {
+    header: {
+      x: MARGIN,
+      y: MARGIN,
+      w: SLIDE_WIDTH - 2 * MARGIN,
+      h: 1
+    },
+    left: {
+      x: MARGIN,
+      y: 1.5 + MARGIN,
+      w: midpoint - MARGIN - 0.15,
+      h: SLIDE_HEIGHT - 2.5
+    },
+    right: {
+      x: midpoint + 0.15,
+      y: 1.5 + MARGIN,
+      w: midpoint - MARGIN - 0.15,
+      h: SLIDE_HEIGHT - 2.5
+    }
+  };
+}
+
+/**
+ * Apply Stacked Pattern
+ * Vertical stacking of content sections
+ */
+export function applyStackedPattern(spec: SlideSpecV2): PatternRegions {
+  const sectionHeight = (SLIDE_HEIGHT - 2 * MARGIN - 1) / 3;
+
+  return {
+    header: {
+      x: MARGIN,
+      y: MARGIN,
+      w: SLIDE_WIDTH - 2 * MARGIN,
+      h: 1
+    },
+    item1: {
+      x: MARGIN,
+      y: 1 + MARGIN,
+      w: SLIDE_WIDTH - 2 * MARGIN,
+      h: sectionHeight
+    },
+    item2: {
+      x: MARGIN,
+      y: 1 + MARGIN + sectionHeight,
+      w: SLIDE_WIDTH - 2 * MARGIN,
+      h: sectionHeight
+    },
+    item3: {
+      x: MARGIN,
+      y: 1 + MARGIN + sectionHeight * 2,
+      w: SLIDE_WIDTH - 2 * MARGIN,
+      h: sectionHeight
+    }
+  };
+}
+
+/**
+ * Get all available patterns
+ */
+export function getAllPatterns(): string[] {
+  return [
+    "hero",
+    "split",
+    "asymmetric",
+    "grid",
+    "minimal",
+    "data-focused",
+    "sidebar",
+    "three-column",
+    "two-column-accent",
+    "timeline",
+    "centered",
+    "full-bleed",
+    "comparison",
+    "stacked"
+  ];
+}
+
+/**
+ * Get pattern description
+ */
+export function getPatternDescription(pattern: string): string {
+  const descriptions: Record<string, string> = {
+    hero: "Large hero section with supporting content below",
+    split: "50/50 left-right content division",
+    asymmetric: "Dynamic off-center layout with visual balance",
+    grid: "4-item grid layout for equal content",
+    minimal: "Minimal layout with maximum whitespace",
+    "data-focused": "Optimized for charts and data visualization",
+    sidebar: "Content with prominent sidebar",
+    "three-column": "Three equal columns for comparison",
+    "two-column-accent": "Two columns with accent divider",
+    timeline: "Horizontal timeline for processes",
+    centered: "Centered content with maximum focus",
+    "full-bleed": "Content extends to edges",
+    comparison: "Side-by-side comparison layout",
+    stacked: "Vertically stacked content sections"
+  };
+
+  return descriptions[pattern] || "Unknown pattern";
 }
 

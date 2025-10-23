@@ -21,6 +21,8 @@ import type { PresentationRequest } from "./presentationAI";
 import { buildProfessionalSlide } from "./pptxBuilder";
 import { buildMinimalSlide } from "./pptxBuilder/minimalBuilder";
 import { buildHybridSlide } from "./pptxBuilder/hybridBuilder";
+import { buildPremiumSlide } from "./pptxBuilder/premiumBuilder";
+import { buildLayoutSlide } from "./pptxBuilder/layoutBuilder";
 
 // Define secrets
 const AI_API_KEY = defineSecret("AI_API_KEY");
@@ -266,19 +268,37 @@ async function buildPptx(specs: SlideSpec | SlideSpec[]): Promise<ArrayBuffer> {
 
 /** Build a single slide */
 async function buildSlide(pptx: PptxGenJS, spec: SlideSpec): Promise<void> {
+  logger.info("🏗️ buildSlide called", {
+    hasTitle: !!spec.content.title,
+    hasSubtitle: !!spec.content.subtitle,
+    hasLayout: !!spec.layout,
+  });
+
   try {
-    // Use hybrid builder - SVG backgrounds + PptxGenJS content
-    // This gives us professional design + editable content
-    await buildHybridSlide(pptx, spec as any);
+    // Use layout builder first - respects spec's layout grid system
+    logger.info("📐 Attempting layout builder...");
+    await buildLayoutSlide(pptx, spec as any);
+    logger.info("✅ Layout builder succeeded");
     return;
   } catch (e) {
-    logger.error("Hybrid slide builder failed, falling back to minimal", { error: String(e) });
-    // Fallback to minimal builder if hybrid fails
+    logger.error("❌ Layout slide builder failed, falling back to minimal", { error: String(e) });
+    // Fallback to minimal builder if layout fails
     try {
+      logger.info("📐 Attempting minimal builder...");
       await buildMinimalSlide(pptx, spec as any);
-    } catch (fallbackError) {
-      logger.error("Minimal slide builder also failed", { error: String(fallbackError) });
-      throw fallbackError;
+      logger.info("✅ Minimal builder succeeded");
+      return;
+    } catch (minimalError) {
+      logger.error("❌ Minimal slide builder also failed, falling back to premium", { error: String(minimalError) });
+      // Final fallback to premium builder
+      try {
+        logger.info("📐 Attempting premium builder...");
+        await buildPremiumSlide(pptx, spec as any);
+        logger.info("✅ Premium builder succeeded");
+      } catch (fallbackError) {
+        logger.error("❌ Premium slide builder also failed", { error: String(fallbackError) });
+        throw fallbackError;
+      }
     }
   }
 }
@@ -458,4 +478,8 @@ export const generatePresentation = onRequest(
     });
   }
 );
+
+// Export performance and error handling utilities
+export * from "./performanceOptimizer";
+export * from "./errorHandler";
 
