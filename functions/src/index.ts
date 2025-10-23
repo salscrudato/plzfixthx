@@ -15,8 +15,9 @@ import { fetch as undiciFetch } from "undici";
 import { callAIWithRetry, sanitizePrompt, moderateContent, enhanceSlideSpec } from "./aiHelpers";
 import { ENHANCED_SYSTEM_PROMPT } from "./prompts";
 
-// Import PPTX builder
+// Import PPTX builders
 import { buildProfessionalSlide } from "./pptxBuilder";
+import { buildMinimalSlide } from "./pptxBuilder/minimalBuilder";
 
 // Define secrets
 const AI_API_KEY = defineSecret("AI_API_KEY");
@@ -263,16 +264,17 @@ async function buildPptx(specs: SlideSpec | SlideSpec[]): Promise<ArrayBuffer> {
 /** Build a single slide */
 async function buildSlide(pptx: PptxGenJS, spec: SlideSpec): Promise<void> {
   try {
-    // Try to use professional slide builder if spec has design field (V2)
-    if ((spec as any).design && (spec as any).design.pattern) {
-      await buildProfessionalSlide(pptx, spec as any);
-      return;
-    }
+    // Use minimal builder for now - clean, simple, no corruption
+    await buildMinimalSlide(pptx, spec as any);
+    return;
   } catch (e) {
-    logger.warn("Professional slide builder failed, falling back to basic builder", { error: String(e) });
+    logger.error("Minimal slide builder failed", { error: String(e) });
+    throw e;
   }
+}
 
-  // Fallback to basic builder for V1 specs
+/** Legacy basic builder - kept for reference */
+async function buildSlideBasic(pptx: PptxGenJS, spec: SlideSpec): Promise<void> {
   const slide = pptx.addSlide();
 
   // Helpers
