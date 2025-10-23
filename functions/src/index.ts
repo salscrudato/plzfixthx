@@ -14,10 +14,13 @@ import { fetch as undiciFetch } from "undici";
 // Import AI helpers
 import { callAIWithRetry, sanitizePrompt, moderateContent, enhanceSlideSpec } from "./aiHelpers";
 import { ENHANCED_SYSTEM_PROMPT } from "./prompts";
+import { generatePresentationPrompt, analyzePresentationRequest, validatePresentationFlow } from "./presentationAI";
+import type { PresentationRequest } from "./presentationAI";
 
 // Import PPTX builders
 import { buildProfessionalSlide } from "./pptxBuilder";
 import { buildMinimalSlide } from "./pptxBuilder/minimalBuilder";
+import { buildHybridSlide } from "./pptxBuilder/hybridBuilder";
 
 // Define secrets
 const AI_API_KEY = defineSecret("AI_API_KEY");
@@ -264,12 +267,19 @@ async function buildPptx(specs: SlideSpec | SlideSpec[]): Promise<ArrayBuffer> {
 /** Build a single slide */
 async function buildSlide(pptx: PptxGenJS, spec: SlideSpec): Promise<void> {
   try {
-    // Use minimal builder for now - clean, simple, no corruption
-    await buildMinimalSlide(pptx, spec as any);
+    // Use hybrid builder - SVG backgrounds + PptxGenJS content
+    // This gives us professional design + editable content
+    await buildHybridSlide(pptx, spec as any);
     return;
   } catch (e) {
-    logger.error("Minimal slide builder failed", { error: String(e) });
-    throw e;
+    logger.error("Hybrid slide builder failed, falling back to minimal", { error: String(e) });
+    // Fallback to minimal builder if hybrid fails
+    try {
+      await buildMinimalSlide(pptx, spec as any);
+    } catch (fallbackError) {
+      logger.error("Minimal slide builder also failed", { error: String(fallbackError) });
+      throw fallbackError;
+    }
   }
 }
 
@@ -364,4 +374,88 @@ async function buildSlideBasic(pptx: PptxGenJS, spec: SlideSpec): Promise<void> 
     }
   }
 }
+
+/**
+ * Generate Full Presentation
+ * Creates a complete multi-slide presentation with narrative flow
+ */
+export const generatePresentation = onRequest(
+  { cors: ["*"], secrets: [AI_API_KEY, AI_BASE_URL, AI_MODEL] },
+  async (req, res) => {
+    return cors(req, res, async () => {
+      try {
+        if (req.method !== "POST") {
+          res.status(405).json({ error: "Method not allowed" });
+          return;
+        }
+
+        const body = req.body as PresentationRequest;
+
+        if (!body.topic) {
+          res.status(400).json({ error: "Missing required field: topic" });
+          return;
+        }
+
+        logger.info("Generating presentation", { topic: body.topic, audience: body.audience });
+
+        // Analyze request and generate structure
+        const structure = analyzePresentationRequest(body);
+
+        // Generate enhanced prompt for full presentation
+        const enhancedPrompt = generatePresentationPrompt(body);
+
+        // Call AI to generate all slides
+        const aiResponse = await callAIWithRetry(
+          enhancedPrompt,
+          AI_API_KEY.value(),
+          AI_BASE_URL.value(),
+          AI_MODEL.value() || "gpt-4",
+          z.any() // Accept any response format for multi-slide
+        );
+
+        // Parse AI response - expecting array of slide specs
+        let slideSpecs: any[];
+        try {
+          const parsed = JSON.parse(String(aiResponse));
+          slideSpecs = Array.isArray(parsed) ? parsed : [parsed];
+        } catch (parseError) {
+          logger.error("Failed to parse AI response", { error: String(parseError) });
+          res.status(500).json({ error: "Invalid AI response format" });
+          return;
+        }
+
+        // Validate and enhance each slide
+        const validatedSlides = slideSpecs.map(spec => {
+          try {
+            const validated = SlideSpecZ.parse(spec);
+            return enhanceSlideSpec(validated);
+          } catch (validationError) {
+            logger.warn("Slide validation failed, using fallback", { error: String(validationError) });
+            return spec; // Use as-is if validation fails
+          }
+        });
+
+        // Validate presentation flow
+        const flowValidation = validatePresentationFlow(validatedSlides);
+        if (!flowValidation.valid) {
+          logger.warn("Presentation flow issues detected", { issues: flowValidation.issues });
+        }
+
+        res.status(200).json({
+          presentation: {
+            title: body.topic,
+            slideCount: validatedSlides.length,
+            slides: validatedSlides,
+            structure: structure,
+            flowValidation: flowValidation
+          }
+        });
+
+      } catch (error) {
+        logger.error("Error generating presentation", { error: String(error) });
+        res.status(500).json({ error: "Failed to generate presentation" });
+      }
+    });
+  }
+);
 

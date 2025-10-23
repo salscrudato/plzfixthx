@@ -1,6 +1,6 @@
 export type AspectRatio = "16:9" | "4:3";
 export type RegionName = "header" | "body" | "footer" | "aside";
-export type ChartKind = "bar" | "line" | "pie";
+export type ChartKind = "bar" | "line" | "pie" | "area" | "scatter" | "combo" | "waterfall" | "funnel" | "doughnut";
 
 export interface SlideSpecV1 {
   meta: {
@@ -18,7 +18,18 @@ export interface SlideSpecV1 {
       id: string; kind: ChartKind; title?: string; labels: string[];
       series: { name: string; values: number[] }[]; valueFormat?: "number"|"percent"|"currency"|"auto";
     };
-    imagePlaceholders?: { id: string; role: "hero" | "logo" | "illustration" | "icon"; alt: string }[];
+    imagePlaceholders?: { id: string; role: "hero" | "logo" | "illustration" | "icon" | "background"; alt: string }[];
+    images?: {
+      id: string;
+      role: "hero" | "logo" | "illustration" | "icon" | "background";
+      source: {
+        type: "url" | "unsplash" | "placeholder";
+        url?: string;
+        query?: string;
+      };
+      alt: string;
+      fit?: "cover" | "contain" | "fill";
+    }[];
   };
   layout: {
     grid: { rows: number; cols: number; gutter: number; margin: { t: number; r: number; b: number; l: number } };

@@ -8,6 +8,7 @@ export * from "./patterns";
 export * from "./slideBuilder";
 export * from "./chartBuilder";
 export * from "./premiumComponents";
+export * from "./shapeHelpers";
 
 // Re-export commonly used functions
 export {
@@ -30,6 +31,15 @@ export {
   validatePatternRegions,
   calculateWhitespacePercentage
 } from "./patterns";
+
+export {
+  addConnectorArrow,
+  addCurvedConnector,
+  addCalloutBox,
+  addProcessFlow,
+  addMetricCard,
+  addComparisonBox
+} from "./shapeHelpers";
 
 export {
   mapColorPalette,

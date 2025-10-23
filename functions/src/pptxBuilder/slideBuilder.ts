@@ -61,13 +61,8 @@ function applyBackground(
   spec: SlideSpecV2,
   colors: any
 ): void {
-  // Premium background with subtle gradient or solid
-  const bgColor = colors.background || "#F8FAFC";
-
-  slide.background = {
-    fill: bgColor,
-    transparency: 0
-  };
+  // Apply sophisticated gradient background
+  applyPremiumGradientBackground(slide, spec, colors);
 
   // Get accent color with fallback
   const accentColor = spec.design?.colorStrategy?.emphasis || colors.accent || "#10B981";
@@ -480,5 +475,281 @@ function renderImages(
       valign: "middle"
     });
   });
+}
+
+/**
+ * Apply premium gradient background with sophisticated design
+ * Creates depth and visual interest while maintaining professionalism
+ */
+function applyPremiumGradientBackground(
+  slide: any,
+  spec: SlideSpecV2,
+  colors: any
+): void {
+  const slideWidth = 10;
+  const slideHeight = 7.5;
+
+  // Get colors from spec
+  const bgColor = colors.background || "#F8FAFC";
+  const primaryColor = colors.primary || "#1E40AF";
+  const accentColor = spec.design?.colorStrategy?.emphasis || colors.accent || "#10B981";
+  const neutralMid = colors.neutral[4] || "#94A3B8";
+
+  // Base background color
+  slide.background = { fill: bgColor.replace("#", "") };
+
+  // Determine gradient style based on design pattern
+  const pattern = spec.design?.pattern || "split";
+
+  switch (pattern) {
+    case "hero":
+      // Dramatic top-to-bottom gradient for hero slides
+      applyHeroGradient(slide, slideWidth, slideHeight, primaryColor, accentColor);
+      break;
+
+    case "minimal":
+      // Very subtle center-focused gradient for minimal slides
+      applyMinimalGradient(slide, slideWidth, slideHeight, bgColor, neutralMid);
+      break;
+
+    case "data-focused":
+      // Left-to-right gradient emphasizing the data area
+      applyDataGradient(slide, slideWidth, slideHeight, bgColor, accentColor);
+      break;
+
+    case "split":
+      // Diagonal gradient for split layouts
+      applySplitGradient(slide, slideWidth, slideHeight, bgColor, primaryColor);
+      break;
+
+    case "asymmetric":
+      // Dynamic angular gradient for asymmetric layouts
+      applyAsymmetricGradient(slide, slideWidth, slideHeight, primaryColor, accentColor);
+      break;
+
+    case "grid":
+      // Subtle radial-like gradient for grid layouts
+      applyGridGradient(slide, slideWidth, slideHeight, bgColor, neutralMid);
+      break;
+
+    default:
+      // Default subtle gradient
+      applyDefaultGradient(slide, slideWidth, slideHeight, bgColor, neutralMid);
+  }
+}
+
+/**
+ * Hero pattern gradient - dramatic top-to-bottom
+ */
+function applyHeroGradient(slide: any, w: number, h: number, primary: string, accent: string): void {
+  const steps = 8;
+  for (let i = 0; i < steps; i++) {
+    const transparency = 96 - (i * 1.5); // 96% to 85.5%
+    const yPos = (h / steps) * i;
+    const height = h / steps + 0.05;
+
+    slide.addShape(PptxGenJS.ShapeType.rect, {
+      x: 0,
+      y: yPos,
+      w: w,
+      h: height,
+      fill: {
+        color: primary.replace("#", ""),
+        transparency: transparency
+      },
+      line: { type: "none" }
+    });
+  }
+}
+
+/**
+ * Minimal pattern gradient - very subtle center focus
+ */
+function applyMinimalGradient(slide: any, w: number, h: number, bg: string, neutral: string): void {
+  // Subtle vignette effect - darker at edges
+  const edgeTransparency = 98;
+
+  // Top edge
+  slide.addShape(PptxGenJS.ShapeType.rect, {
+    x: 0,
+    y: 0,
+    w: w,
+    h: 0.5,
+    fill: {
+      color: neutral.replace("#", ""),
+      transparency: edgeTransparency
+    },
+    line: { type: "none" }
+  });
+
+  // Bottom edge
+  slide.addShape(PptxGenJS.ShapeType.rect, {
+    x: 0,
+    y: h - 0.5,
+    w: w,
+    h: 0.5,
+    fill: {
+      color: neutral.replace("#", ""),
+      transparency: edgeTransparency
+    },
+    line: { type: "none" }
+  });
+}
+
+/**
+ * Data-focused pattern gradient - left to right emphasis
+ */
+function applyDataGradient(slide: any, w: number, h: number, bg: string, accent: string): void {
+  const steps = 6;
+  for (let i = 0; i < steps; i++) {
+    const transparency = 97 - (i * 0.8); // 97% to 93%
+    const xPos = (w / steps) * i;
+    const width = w / steps + 0.05;
+
+    slide.addShape(PptxGenJS.ShapeType.rect, {
+      x: xPos,
+      y: 0,
+      w: width,
+      h: h,
+      fill: {
+        color: accent.replace("#", ""),
+        transparency: transparency
+      },
+      line: { type: "none" }
+    });
+  }
+}
+
+/**
+ * Split pattern gradient - diagonal sweep
+ */
+function applySplitGradient(slide: any, w: number, h: number, bg: string, primary: string): void {
+  const steps = 10;
+  for (let i = 0; i < steps; i++) {
+    const transparency = 97 - (i * 0.5); // 97% to 92.5%
+    const xPos = (w / steps) * i;
+    const width = w / steps + 0.05;
+
+    slide.addShape(PptxGenJS.ShapeType.rect, {
+      x: xPos,
+      y: 0,
+      w: width,
+      h: h,
+      fill: {
+        color: primary.replace("#", ""),
+        transparency: transparency
+      },
+      line: { type: "none" }
+    });
+  }
+}
+
+/**
+ * Asymmetric pattern gradient - dynamic angular
+ */
+function applyAsymmetricGradient(slide: any, w: number, h: number, primary: string, accent: string): void {
+  // Top-right to bottom-left gradient
+  const steps = 8;
+  for (let i = 0; i < steps; i++) {
+    const transparency = 96 - (i * 1); // 96% to 89%
+    const yPos = (h / steps) * i;
+    const height = h / steps + 0.05;
+
+    slide.addShape(PptxGenJS.ShapeType.rect, {
+      x: 0,
+      y: yPos,
+      w: w,
+      h: height,
+      fill: {
+        color: accent.replace("#", ""),
+        transparency: transparency
+      },
+      line: { type: "none" }
+    });
+  }
+
+  // Add subtle diagonal accent
+  slide.addShape(PptxGenJS.ShapeType.rect, {
+    x: w * 0.7,
+    y: 0,
+    w: w * 0.3,
+    h: h,
+    fill: {
+      color: primary.replace("#", ""),
+      transparency: 98
+    },
+    line: { type: "none" }
+  });
+}
+
+/**
+ * Grid pattern gradient - subtle radial effect
+ */
+function applyGridGradient(slide: any, w: number, h: number, bg: string, neutral: string): void {
+  // Center-to-edge gradient simulation
+  const centerX = w / 2;
+  const centerY = h / 2;
+
+  // Top half
+  for (let i = 0; i < 4; i++) {
+    const transparency = 98 - (i * 0.5);
+    const yPos = (centerY / 4) * i;
+    const height = centerY / 4 + 0.05;
+
+    slide.addShape(PptxGenJS.ShapeType.rect, {
+      x: 0,
+      y: yPos,
+      w: w,
+      h: height,
+      fill: {
+        color: neutral.replace("#", ""),
+        transparency: transparency
+      },
+      line: { type: "none" }
+    });
+  }
+
+  // Bottom half
+  for (let i = 0; i < 4; i++) {
+    const transparency = 96 + (i * 0.5);
+    const yPos = centerY + (centerY / 4) * i;
+    const height = centerY / 4 + 0.05;
+
+    slide.addShape(PptxGenJS.ShapeType.rect, {
+      x: 0,
+      y: yPos,
+      w: w,
+      h: height,
+      fill: {
+        color: neutral.replace("#", ""),
+        transparency: transparency
+      },
+      line: { type: "none" }
+    });
+  }
+}
+
+/**
+ * Default gradient - subtle top-to-bottom
+ */
+function applyDefaultGradient(slide: any, w: number, h: number, bg: string, neutral: string): void {
+  const steps = 6;
+  for (let i = 0; i < steps; i++) {
+    const transparency = 97 - (i * 0.6); // 97% to 94%
+    const yPos = (h / steps) * i;
+    const height = h / steps + 0.05;
+
+    slide.addShape(PptxGenJS.ShapeType.rect, {
+      x: 0,
+      y: yPos,
+      w: w,
+      h: height,
+      fill: {
+        color: neutral.replace("#", ""),
+        transparency: transparency
+      },
+      line: { type: "none" }
+    });
+  }
 }
 

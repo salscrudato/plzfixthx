@@ -1,8 +1,16 @@
 const region = import.meta.env.VITE_FUNCTIONS_REGION || "us-central1";
 const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || "pls-fix-thx";
 
-// ALWAYS use deployed production functions URL, even in development
+// Use local emulator in development, deployed functions in production
 function baseUrl() {
+  // Check if we're in development mode and should use emulator
+  const isDev = import.meta.env.DEV;
+  const useEmulator = isDev && !import.meta.env.VITE_USE_PRODUCTION_FUNCTIONS;
+
+  if (useEmulator) {
+    return "http://127.0.0.1:5001/pls-fix-thx/us-central1";
+  }
+
   return `https://${region}-${projectId}.cloudfunctions.net`;
 }
 

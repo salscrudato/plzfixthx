@@ -29,11 +29,13 @@ export function SlideCanvas({ spec }: { spec: SlideSpec }) {
     return null;
   }, [spec]);
 
-  // Create inline styles for design tokens
+  // Create inline styles for design tokens with gradient background
   const slideStyle: React.CSSProperties = designTokens ? {
-    backgroundColor: designTokens.palette.neutral[6],
+    background: getGradientBackground(designTokens),
     color: designTokens.palette.neutral[0],
-  } : {};
+  } : {
+    background: 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 50%, #F8FAFC 100%)',
+  };
 
   // Responsive 16:9 surface
   return (
@@ -177,5 +179,46 @@ function ElementByRef({ spec, refId, designTokens }: { spec: SlideSpec; refId: s
     );
   }
   return null;
+}
+
+/**
+ * Generate gradient background based on design pattern
+ */
+function getGradientBackground(designTokens: any): string {
+  const pattern = designTokens.pattern || 'split';
+  const primary = designTokens.palette.primary || '#6366F1';
+  const accent = designTokens.palette.accent || '#EC4899';
+  const neutralLight = designTokens.palette.neutral[6] || '#F8FAFC';
+  const neutralMid = designTokens.palette.neutral[4] || '#94A3B8';
+
+  switch (pattern) {
+    case 'hero':
+      // Dramatic top-to-bottom gradient
+      return `linear-gradient(180deg, ${neutralLight} 0%, ${primary}08 50%, ${accent}05 100%)`;
+
+    case 'minimal':
+      // Very subtle vignette effect
+      return `radial-gradient(ellipse at center, ${neutralLight} 0%, ${neutralMid}05 100%)`;
+
+    case 'data-focused':
+      // Left-to-right gradient
+      return `linear-gradient(90deg, ${neutralLight} 0%, ${accent}06 100%)`;
+
+    case 'split':
+      // Diagonal gradient
+      return `linear-gradient(135deg, ${neutralLight} 0%, ${primary}05 50%, ${neutralLight} 100%)`;
+
+    case 'asymmetric':
+      // Dynamic angular gradient
+      return `linear-gradient(120deg, ${neutralLight} 0%, ${accent}08 60%, ${primary}05 100%)`;
+
+    case 'grid':
+      // Subtle radial gradient
+      return `radial-gradient(circle at 50% 50%, ${neutralLight} 0%, ${neutralMid}04 100%)`;
+
+    default:
+      // Default subtle gradient
+      return `linear-gradient(135deg, ${neutralLight} 0%, ${neutralMid}03 50%, ${neutralLight} 100%)`;
+  }
 }
 

@@ -99,13 +99,13 @@ export function mapTypography(tokens: any): MappedTypography {
   };
 
   const sizes = tokens.sizes || {
-    step_4: 48,   // Hero title
-    step_3: 40,   // Premium title size
-    step_2: 28,   // Subtitle
-    step_1: 20,   // Secondary
-    step_0: 16,   // Body
-    "step_-1": 14, // Caption
-    "step_-2": 12  // Small
+    step_4: 56,   // Hero title - larger for impact
+    step_3: 44,   // Premium title size - increased
+    step_2: 32,   // Subtitle - more prominent
+    step_1: 24,   // Secondary - better hierarchy
+    step_0: 18,   // Body - more readable
+    "step_-1": 16, // Caption - clearer
+    "step_-2": 14  // Small - still legible
   };
 
   const weights = tokens.weights || {
@@ -117,10 +117,10 @@ export function mapTypography(tokens: any): MappedTypography {
   };
 
   const lineHeights = tokens.lineHeights || {
-    tight: 1.1,
-    compact: 1.2,
-    standard: 1.5,
-    relaxed: 1.75
+    tight: 1.15,    // Slightly more breathing room
+    compact: 1.25,  // Better readability
+    standard: 1.6,  // Optimal for body text
+    relaxed: 1.8    // Maximum comfort
   };
 
   return {

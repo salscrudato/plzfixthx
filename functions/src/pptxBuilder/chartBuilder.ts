@@ -16,7 +16,19 @@ export interface ChartConfig {
   colors?: string[];
   showLegend?: boolean;
   showDataLabels?: boolean;
-  chartType: "bar" | "line" | "pie" | "area";
+  chartType: "bar" | "line" | "pie" | "area" | "scatter" | "combo" | "waterfall" | "funnel" | "doughnut";
+  // Advanced options
+  showTrendline?: boolean;
+  showDataTable?: boolean;
+  annotations?: Array<{
+    text: string;
+    x: number;
+    y: number;
+  }>;
+  // Combo chart specific
+  comboTypes?: Array<"bar" | "line" | "area">;
+  // Waterfall specific
+  waterfallConnectors?: boolean;
 }
 
 /**
@@ -36,13 +48,16 @@ export function buildBarChart(
     values: s.values
   }));
 
-  // Premium color palette for charts
+  // Premium color palette for charts - vibrant, modern, professional
   const premiumColors = config.colors || [
-    "#1E40AF",  // Deep blue
-    "#10B981",  // Emerald
-    "#F59E0B",  // Amber
-    "#8B5CF6",  // Purple
-    "#EC4899"   // Magenta
+    "#3B82F6",  // Bright blue - primary
+    "#10B981",  // Emerald - success
+    "#F59E0B",  // Amber - warning
+    "#8B5CF6",  // Purple - creative
+    "#EC4899",  // Magenta - accent
+    "#06B6D4",  // Cyan - tech
+    "#EF4444",  // Red - alert
+    "#14B8A6"   // Teal - calm
   ];
 
   const chartOptions: any = {
@@ -53,22 +68,37 @@ export function buildBarChart(
     chartColors: premiumColors,
     showLegend: config.showLegend !== false,
     legendPos: "b" as const,
-    dataLabelFontSize: config.showDataLabels ? 11 : 0,
+    dataLabelFontSize: config.showDataLabels ? 12 : 0,
     dataLabelPosition: "ctr" as const,
+    dataLabelColor: "#0F172A",
+    dataLabelFontFace: "Inter, Arial, sans-serif",
+    dataLabelFontBold: true,
     barDir: "bar" as const,
     showTitle: !!config.title,
     title: config.title || "",
-    titleFontSize: 18,
+    titleFontSize: 20,
     titleFontBold: true,
     titleFontFace: "Inter, Arial, sans-serif",
     titleColor: "#0F172A",
-    chartGridLine: { style: "solid", color: "#E2E8F0", size: 0.5 },
+    chartGridLine: { style: "solid", color: "#E5E7EB", size: 0.75 },
     showValue: config.showDataLabels !== false,
-    barGapWidthPercent: 150,
-    catAxisLabelFontSize: 11,
-    valAxisLabelFontSize: 11,
-    legendFontSize: 11,
-    dataLabelFontFace: "Inter, Arial, sans-serif"
+    barGapWidthPercent: 120,
+    catAxisLabelFontSize: 12,
+    catAxisLabelColor: "#475569",
+    catAxisLabelFontFace: "Inter, Arial, sans-serif",
+    valAxisLabelFontSize: 12,
+    valAxisLabelColor: "#475569",
+    valAxisLabelFontFace: "Inter, Arial, sans-serif",
+    legendFontSize: 12,
+    legendFontFace: "Inter, Arial, sans-serif",
+    legendColor: "#475569",
+    shadow: {
+      type: "outer",
+      color: "000000",
+      opacity: 0.05,
+      blur: 4,
+      offset: 2
+    }
   };
 
   slide.addChart(PptxGenJS.ChartType.bar, chartData, chartOptions);
@@ -91,13 +121,16 @@ export function buildLineChart(
     values: s.values
   }));
 
-  // Premium color palette for charts
+  // Premium color palette for charts - vibrant, modern, professional
   const premiumColors = config.colors || [
-    "#1E40AF",  // Deep blue
-    "#10B981",  // Emerald
-    "#F59E0B",  // Amber
-    "#8B5CF6",  // Purple
-    "#EC4899"   // Magenta
+    "#3B82F6",  // Bright blue - primary
+    "#10B981",  // Emerald - success
+    "#F59E0B",  // Amber - warning
+    "#8B5CF6",  // Purple - creative
+    "#EC4899",  // Magenta - accent
+    "#06B6D4",  // Cyan - tech
+    "#EF4444",  // Red - alert
+    "#14B8A6"   // Teal - calm
   ];
 
   const chartOptions: any = {
@@ -108,22 +141,39 @@ export function buildLineChart(
     chartColors: premiumColors,
     showLegend: config.showLegend !== false,
     legendPos: "b" as const,
-    dataLabelFontSize: config.showDataLabels ? 11 : 0,
+    dataLabelFontSize: config.showDataLabels ? 12 : 0,
     dataLabelPosition: "ctr" as const,
+    dataLabelColor: "#0F172A",
+    dataLabelFontFace: "Inter, Arial, sans-serif",
+    dataLabelFontBold: true,
     showTitle: !!config.title,
     title: config.title || "",
-    titleFontSize: 18,
+    titleFontSize: 20,
     titleFontBold: true,
     titleFontFace: "Inter, Arial, sans-serif",
     titleColor: "#0F172A",
     lineSmooth: true,
-    chartGridLine: { style: "solid", color: "#E2E8F0", size: 0.5 },
+    chartGridLine: { style: "solid", color: "#E5E7EB", size: 0.75 },
     showValue: config.showDataLabels !== false,
-    catAxisLabelFontSize: 11,
-    valAxisLabelFontSize: 11,
-    legendFontSize: 11,
-    dataLabelFontFace: "Inter, Arial, sans-serif",
-    lineSize: 2.5
+    catAxisLabelFontSize: 12,
+    catAxisLabelColor: "#475569",
+    catAxisLabelFontFace: "Inter, Arial, sans-serif",
+    valAxisLabelFontSize: 12,
+    valAxisLabelColor: "#475569",
+    valAxisLabelFontFace: "Inter, Arial, sans-serif",
+    legendFontSize: 12,
+    legendFontFace: "Inter, Arial, sans-serif",
+    legendColor: "#475569",
+    lineSize: 3,
+    lineDataSymbol: "circle",
+    lineDataSymbolSize: 6,
+    shadow: {
+      type: "outer",
+      color: "000000",
+      opacity: 0.05,
+      blur: 4,
+      offset: 2
+    }
   };
 
   slide.addChart(PptxGenJS.ChartType.line, chartData, chartOptions);
@@ -148,15 +198,18 @@ export function buildPieChart(
     }
   ];
 
-  // Premium color palette for pie charts
+  // Premium color palette for pie charts - vibrant, modern, professional
   const premiumColors = config.colors || [
-    "#1E40AF",  // Deep blue
-    "#10B981",  // Emerald
-    "#F59E0B",  // Amber
-    "#8B5CF6",  // Purple
-    "#EC4899",  // Magenta
-    "#06B6D4",  // Cyan
-    "#7C3AED"   // Violet
+    "#3B82F6",  // Bright blue - primary
+    "#10B981",  // Emerald - success
+    "#F59E0B",  // Amber - warning
+    "#8B5CF6",  // Purple - creative
+    "#EC4899",  // Magenta - accent
+    "#06B6D4",  // Cyan - tech
+    "#EF4444",  // Red - alert
+    "#14B8A6",  // Teal - calm
+    "#F97316",  // Orange - energy
+    "#A855F7"   // Violet - luxury
   ];
 
   const chartOptions: any = {
@@ -167,18 +220,29 @@ export function buildPieChart(
     chartColors: premiumColors,
     showLegend: config.showLegend !== false,
     legendPos: "r" as const,
-    dataLabelFontSize: config.showDataLabels ? 11 : 0,
+    dataLabelFontSize: config.showDataLabels ? 12 : 0,
     dataLabelPosition: "ctr" as const,
+    dataLabelColor: "#0F172A",
+    dataLabelFontFace: "Inter, Arial, sans-serif",
+    dataLabelFontBold: true,
     showTitle: !!config.title,
     title: config.title || "",
-    titleFontSize: 18,
+    titleFontSize: 20,
     titleFontBold: true,
     titleFontFace: "Inter, Arial, sans-serif",
     titleColor: "#0F172A",
     showValue: config.showDataLabels !== false,
-    legendFontSize: 11,
-    dataLabelFontFace: "Inter, Arial, sans-serif",
-    pieHole: 0
+    legendFontSize: 12,
+    legendFontFace: "Inter, Arial, sans-serif",
+    legendColor: "#475569",
+    pieHole: 0,
+    shadow: {
+      type: "outer",
+      color: "000000",
+      opacity: 0.08,
+      blur: 6,
+      offset: 3
+    }
   };
 
   slide.addChart(PptxGenJS.ChartType.pie, chartData, chartOptions);
@@ -201,13 +265,16 @@ export function buildAreaChart(
     values: s.values
   }));
 
-  // Premium color palette for area charts with transparency
+  // Premium color palette for area charts with transparency - vibrant, modern
   const premiumColors = config.colors || [
-    "#1E40AF",  // Deep blue
-    "#10B981",  // Emerald
-    "#F59E0B",  // Amber
-    "#8B5CF6",  // Purple
-    "#EC4899"   // Magenta
+    "#3B82F6",  // Bright blue - primary
+    "#10B981",  // Emerald - success
+    "#F59E0B",  // Amber - warning
+    "#8B5CF6",  // Purple - creative
+    "#EC4899",  // Magenta - accent
+    "#06B6D4",  // Cyan - tech
+    "#EF4444",  // Red - alert
+    "#14B8A6"   // Teal - calm
   ];
 
   const chartOptions: any = {
@@ -218,25 +285,220 @@ export function buildAreaChart(
     chartColors: premiumColors,
     showLegend: config.showLegend !== false,
     legendPos: "b" as const,
-    dataLabelFontSize: config.showDataLabels ? 11 : 0,
+    dataLabelFontSize: config.showDataLabels ? 12 : 0,
     dataLabelPosition: "ctr" as const,
+    dataLabelColor: "#0F172A",
+    dataLabelFontFace: "Inter, Arial, sans-serif",
+    dataLabelFontBold: true,
     showTitle: !!config.title,
     title: config.title || "",
-    titleFontSize: 18,
+    titleFontSize: 20,
     titleFontBold: true,
     titleFontFace: "Inter, Arial, sans-serif",
     titleColor: "#0F172A",
     lineSmooth: true,
-    chartGridLine: { style: "solid", color: "#E2E8F0", size: 0.5 },
+    chartGridLine: { style: "solid", color: "#E5E7EB", size: 0.75 },
     showValue: config.showDataLabels !== false,
-    catAxisLabelFontSize: 11,
-    valAxisLabelFontSize: 11,
-    legendFontSize: 11,
-    dataLabelFontFace: "Inter, Arial, sans-serif",
-    lineSize: 2.5
+    catAxisLabelFontSize: 12,
+    catAxisLabelColor: "#475569",
+    catAxisLabelFontFace: "Inter, Arial, sans-serif",
+    valAxisLabelFontSize: 12,
+    valAxisLabelColor: "#475569",
+    valAxisLabelFontFace: "Inter, Arial, sans-serif",
+    legendFontSize: 12,
+    legendFontFace: "Inter, Arial, sans-serif",
+    legendColor: "#475569",
+    lineSize: 2,
+    fillOpacity: 30,
+    shadow: {
+      type: "outer",
+      color: "000000",
+      opacity: 0.05,
+      blur: 4,
+      offset: 2
+    }
   };
 
   slide.addChart(PptxGenJS.ChartType.area, chartData, chartOptions);
+}
+
+/**
+ * Build a premium professional scatter chart with advanced styling
+ */
+export function buildScatterChart(
+  slide: any,
+  config: ChartConfig,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+): void {
+  const chartData = config.series.map(s => ({
+    name: s.name,
+    labels: config.labels,
+    values: s.values
+  }));
+
+  const premiumColors = config.colors || [
+    "#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#EF4444", "#14B8A6"
+  ];
+
+  const chartOptions: any = {
+    x, y, w, h,
+    chartColors: premiumColors,
+    showLegend: config.showLegend !== false,
+    legendPos: "b" as const,
+    dataLabelFontSize: config.showDataLabels ? 10 : 0,
+    dataLabelColor: "#0F172A",
+    dataLabelFontFace: "Inter, Arial, sans-serif",
+    showTitle: !!config.title,
+    title: config.title || "",
+    titleFontSize: 20,
+    titleFontBold: true,
+    titleFontFace: "Inter, Arial, sans-serif",
+    titleColor: "#0F172A",
+    chartGridLine: { style: "solid", color: "#E5E7EB", size: 0.75 },
+    catAxisLabelFontSize: 12,
+    catAxisLabelColor: "#475569",
+    valAxisLabelFontSize: 12,
+    valAxisLabelColor: "#475569",
+    lineDataSymbol: "circle",
+    lineDataSymbolSize: 8,
+    lineSize: 0, // No connecting lines for scatter
+    shadow: {
+      type: "outer",
+      color: "000000",
+      opacity: 0.08,
+      blur: 4,
+      offset: 2
+    }
+  };
+
+  slide.addChart(PptxGenJS.ChartType.scatter, chartData, chartOptions);
+}
+
+/**
+ * Build a doughnut chart (pie chart with hole)
+ */
+export function buildDoughnutChart(
+  slide: any,
+  config: ChartConfig,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+): void {
+  const chartData = [
+    {
+      name: config.series[0]?.name || "Data",
+      labels: config.labels,
+      values: config.series[0]?.values || []
+    }
+  ];
+
+  const premiumColors = config.colors || [
+    "#3B82F6", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899", "#06B6D4", "#EF4444", "#14B8A6", "#F97316", "#A855F7"
+  ];
+
+  const chartOptions: any = {
+    x, y, w, h,
+    chartColors: premiumColors,
+    showLegend: config.showLegend !== false,
+    legendPos: "r" as const,
+    dataLabelFontSize: config.showDataLabels ? 12 : 0,
+    dataLabelPosition: "ctr" as const,
+    dataLabelColor: "#0F172A",
+    dataLabelFontFace: "Inter, Arial, sans-serif",
+    dataLabelFontBold: true,
+    showTitle: !!config.title,
+    title: config.title || "",
+    titleFontSize: 20,
+    titleFontBold: true,
+    titleFontFace: "Inter, Arial, sans-serif",
+    titleColor: "#0F172A",
+    showValue: config.showDataLabels !== false,
+    legendFontSize: 12,
+    legendFontFace: "Inter, Arial, sans-serif",
+    legendColor: "#475569",
+    pieHole: 0.5, // 50% hole for doughnut effect
+    shadow: {
+      type: "outer",
+      color: "000000",
+      opacity: 0.08,
+      blur: 6,
+      offset: 3
+    }
+  };
+
+  slide.addChart(PptxGenJS.ChartType.pie, chartData, chartOptions);
+}
+
+/**
+ * Build a waterfall chart showing cumulative effect
+ */
+export function buildWaterfallChart(
+  slide: any,
+  config: ChartConfig,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+): void {
+  // Waterfall charts show cumulative values
+  // We'll use a bar chart with custom colors for positive/negative
+  const values = config.series[0]?.values || [];
+  const colors: string[] = [];
+
+  // Color code: green for positive, red for negative, blue for total
+  values.forEach((val, idx) => {
+    if (idx === values.length - 1) {
+      colors.push("#3B82F6"); // Blue for total
+    } else if (val >= 0) {
+      colors.push("#10B981"); // Green for positive
+    } else {
+      colors.push("#EF4444"); // Red for negative
+    }
+  });
+
+  const chartData = [{
+    name: config.series[0]?.name || "Values",
+    labels: config.labels,
+    values: values
+  }];
+
+  const chartOptions: any = {
+    x, y, w, h,
+    chartColors: colors,
+    showLegend: false,
+    dataLabelFontSize: config.showDataLabels ? 12 : 0,
+    dataLabelPosition: "outEnd" as const,
+    dataLabelColor: "#0F172A",
+    dataLabelFontFace: "Inter, Arial, sans-serif",
+    dataLabelFontBold: true,
+    barDir: "bar" as const,
+    showTitle: !!config.title,
+    title: config.title || "",
+    titleFontSize: 20,
+    titleFontBold: true,
+    titleFontFace: "Inter, Arial, sans-serif",
+    titleColor: "#0F172A",
+    chartGridLine: { style: "solid", color: "#E5E7EB", size: 0.75 },
+    showValue: config.showDataLabels !== false,
+    barGapWidthPercent: 150,
+    catAxisLabelFontSize: 12,
+    catAxisLabelColor: "#475569",
+    valAxisLabelFontSize: 12,
+    valAxisLabelColor: "#475569",
+    shadow: {
+      type: "outer",
+      color: "000000",
+      opacity: 0.05,
+      blur: 4,
+      offset: 2
+    }
+  };
+
+  slide.addChart(PptxGenJS.ChartType.bar, chartData, chartOptions);
 }
 
 /**
@@ -262,6 +524,25 @@ export function buildChart(
       break;
     case "area":
       buildAreaChart(slide, config, x, y, w, h);
+      break;
+    case "scatter":
+      buildScatterChart(slide, config, x, y, w, h);
+      break;
+    case "doughnut":
+      buildDoughnutChart(slide, config, x, y, w, h);
+      break;
+    case "waterfall":
+      buildWaterfallChart(slide, config, x, y, w, h);
+      break;
+    case "combo":
+      // Combo charts use multiple series with different types
+      // For now, use line chart as fallback
+      buildLineChart(slide, config, x, y, w, h);
+      break;
+    case "funnel":
+      // Funnel charts are similar to bar charts but with decreasing widths
+      // Use bar chart as fallback for now
+      buildBarChart(slide, config, x, y, w, h);
       break;
     default:
       buildBarChart(slide, config, x, y, w, h);
@@ -294,20 +575,36 @@ export function validateChartConfig(config: ChartConfig): boolean {
  */
 export function getRecommendedChartType(
   dataPoints: number,
-  seriesCount: number
-): "bar" | "line" | "pie" | "area" {
-  if (seriesCount === 1 && dataPoints <= 5) {
-    return "pie";
+  seriesCount: number,
+  hasNegativeValues: boolean = false,
+  isCumulative: boolean = false
+): "bar" | "line" | "pie" | "area" | "scatter" | "doughnut" | "waterfall" {
+  // Waterfall for cumulative/sequential data with positive and negative values
+  if (isCumulative && hasNegativeValues) {
+    return "waterfall";
   }
 
+  // Doughnut for single series with few categories (better than pie for modern look)
+  if (seriesCount === 1 && dataPoints <= 6) {
+    return "doughnut";
+  }
+
+  // Scatter for correlation analysis (multiple series, moderate data points)
+  if (seriesCount >= 2 && dataPoints >= 5 && dataPoints <= 20) {
+    return "scatter";
+  }
+
+  // Line for time series or trends (many data points)
   if (seriesCount > 1 && dataPoints > 10) {
     return "line";
   }
 
+  // Area for showing volume/magnitude over time
   if (dataPoints > 15) {
     return "area";
   }
 
+  // Bar as default for comparisons
   return "bar";
 }
 

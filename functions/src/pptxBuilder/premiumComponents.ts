@@ -41,7 +41,7 @@ export function addPremiumBadge(
   const height = config.height || 0.35;
 
   // Badge background
-  slide.addShape(PptxGenJS.ShapeType.roundRect, {
+  slide.addShape("roundRect", {
     x: config.x,
     y: config.y,
     w: width,
@@ -111,7 +111,7 @@ export function addAccentBar(
       break;
   }
 
-  slide.addShape(PptxGenJS.ShapeType.rect, {
+  slide.addShape("rect", {
     x,
     y,
     w,
@@ -132,7 +132,7 @@ export function addDecorativeCircle(
   color: string,
   opacity: number = 0.1
 ): void {
-  slide.addShape(PptxGenJS.ShapeType.ellipse, {
+  slide.addShape("ellipse", {
     x,
     y,
     w: size,
@@ -154,7 +154,7 @@ export function addDecorativeLine(
   color: string,
   width: number = 2
 ): void {
-  slide.addShape(PptxGenJS.ShapeType.line, {
+  slide.addShape("line", {
     x: x1,
     y: y1,
     w: x2 - x1,
@@ -196,7 +196,7 @@ export function addCornerAccent(
       break;
   }
 
-  slide.addShape(PptxGenJS.ShapeType.rect, {
+  slide.addShape("rect", {
     x,
     y,
     w: size,
@@ -217,7 +217,7 @@ export function addPremiumDivider(
   color: string = "#E2E8F0",
   thickness: number = 0.02
 ): void {
-  slide.addShape(PptxGenJS.ShapeType.rect, {
+  slide.addShape("rect", {
     x,
     y,
     w: width,
@@ -239,7 +239,7 @@ export function addHighlightBox(
   color: string,
   opacity: number = 0.15
 ): void {
-  slide.addShape(PptxGenJS.ShapeType.rect, {
+  slide.addShape("rect", {
     x,
     y,
     w: width,
@@ -264,7 +264,7 @@ export function addMetricCard(
   accentColor: string = "#3B82F6"
 ): void {
   // Card background
-  slide.addShape(PptxGenJS.ShapeType.roundRect, {
+  slide.addShape("roundRect", {
     x,
     y,
     w: width,
@@ -281,7 +281,7 @@ export function addMetricCard(
   });
 
   // Accent bar
-  slide.addShape(PptxGenJS.ShapeType.rect, {
+  slide.addShape("rect", {
     x,
     y,
     w: 0.08,
@@ -344,7 +344,7 @@ export function addGradientAccentBar(
   const segmentWidth = width / colors.length;
 
   colors.forEach((color, index) => {
-    slide.addShape(PptxGenJS.ShapeType.rect, {
+    slide.addShape("rect", {
       x: x + index * segmentWidth,
       y,
       w: segmentWidth,
@@ -370,7 +370,7 @@ export function addStatBlock(
   accentColor: string = "#3B82F6"
 ): void {
   // Background
-  slide.addShape(PptxGenJS.ShapeType.roundRect, {
+  slide.addShape("roundRect", {
     x,
     y,
     w: width,
@@ -387,7 +387,7 @@ export function addStatBlock(
   });
 
   // Top accent bar
-  slide.addShape(PptxGenJS.ShapeType.rect, {
+  slide.addShape("rect", {
     x,
     y,
     w: width,
@@ -434,7 +434,7 @@ export function addSectionDivider(
   thickness: number = 0.03
 ): void {
   // Main divider line
-  slide.addShape(PptxGenJS.ShapeType.rect, {
+  slide.addShape("rect", {
     x,
     y,
     w: width,
@@ -447,7 +447,7 @@ export function addSectionDivider(
   const centerX = x + width / 2 - 0.08;
   const centerY = y - 0.08;
 
-  slide.addShape(PptxGenJS.ShapeType.ellipse, {
+  slide.addShape("ellipse", {
     x: centerX,
     y: centerY,
     w: 0.16,
@@ -471,7 +471,7 @@ export function addFeatureHighlight(
   accentColor: string = "#3B82F6"
 ): void {
   // Background
-  slide.addShape(PptxGenJS.ShapeType.roundRect, {
+  slide.addShape("roundRect", {
     x,
     y,
     w: width,
@@ -509,6 +509,128 @@ export function addFeatureHighlight(
     color: "#6B7280",
     fontFace: "Inter, Arial, sans-serif",
     wrap: true
+  });
+}
+
+/**
+ * Add a professional arrow for flow diagrams
+ */
+export function addArrow(
+  slide: any,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  color: string = "#3B82F6",
+  width: number = 3
+): void {
+  // Calculate angle and length
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+  // Add arrow shape
+  slide.addShape("rightArrow", {
+    x: x1,
+    y: y1 - 0.08,
+    w: length,
+    h: 0.16,
+    fill: { color },
+    line: { type: "none" },
+    rotate: angle
+  });
+}
+
+/**
+ * Add a curved connector arrow
+ */
+export function addCurvedArrow(
+  slide: any,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  color: string = "#3B82F6"
+): void {
+  // For now, use a simple line with arrowhead
+  // PptxGenJS has limited support for curved connectors
+  slide.addShape("line", {
+    x: x1,
+    y: y1,
+    w: x2 - x1,
+    h: y2 - y1,
+    line: {
+      color,
+      width: 2,
+      endArrowType: "triangle"
+    }
+  });
+}
+
+/**
+ * Add a process flow with arrows
+ */
+export function addProcessFlow(
+  slide: any,
+  steps: string[],
+  startX: number,
+  startY: number,
+  stepWidth: number,
+  stepHeight: number,
+  spacing: number,
+  accentColor: string = "#3B82F6"
+): void {
+  const totalWidth = steps.length * stepWidth + (steps.length - 1) * spacing;
+  let currentX = startX;
+
+  steps.forEach((step, index) => {
+    // Add step box
+    slide.addShape("roundRect", {
+      x: currentX,
+      y: startY,
+      w: stepWidth,
+      h: stepHeight,
+      fill: { color: "#FFFFFF" },
+      line: { color: accentColor, width: 2 },
+      shadow: {
+        type: "outer",
+        color: "000000",
+        opacity: 0.08,
+        blur: 6,
+        offset: 2
+      }
+    });
+
+    // Add step text
+    slide.addText(step, {
+      x: currentX,
+      y: startY,
+      w: stepWidth,
+      h: stepHeight,
+      fontSize: 12,
+      bold: true,
+      color: accentColor,
+      fontFace: "Inter, Arial, sans-serif",
+      align: "center",
+      valign: "middle",
+      wrap: true
+    });
+
+    // Add arrow to next step (if not last)
+    if (index < steps.length - 1) {
+      addArrow(
+        slide,
+        currentX + stepWidth + 0.05,
+        startY + stepHeight / 2,
+        currentX + stepWidth + spacing - 0.05,
+        startY + stepHeight / 2,
+        accentColor,
+        2
+      );
+    }
+
+    currentX += stepWidth + spacing;
   });
 }
 
