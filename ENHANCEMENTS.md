@@ -81,13 +81,19 @@ New `premiumComponents.ts` module with:
   - Generate Slide Spec: `https://generateslidespec-3wgb3rbjta-uc.a.run.app`
   - Export PPTX: `https://exportpptx-3wgb3rbjta-uc.a.run.app`
 
-### Latest Enhancements Deployed
+### Latest Enhancements Deployed (October 23, 2025 - FIXED)
 - ✅ Enhanced slide builder with asymmetric and grid pattern accents
 - ✅ Optimized chart rendering with advanced styling (bar, line, pie charts)
 - ✅ Advanced typography system with professional font pairings (professional, elegant, modern themes)
 - ✅ Premium decorative elements (gradient accent bars, stat blocks, section dividers, feature highlights)
+- ✅ Fixed PPTX corruption issues:
+  - Fixed shadow opacity values (changed from 20 to 0.08 for proper decimal format)
+  - Integrated professional slide builder into main export pipeline
+  - Added proper fallbacks for missing design fields
+  - Ensured backward compatibility with V1 specs
 - ✅ All builds successful with zero TypeScript errors
 - ✅ Firebase deployment completed successfully
+- ✅ PPTX files now generate without corruption
 
 ### API Response Format
 The AI generates professional JSON specifications with:
@@ -188,6 +194,46 @@ The application follows world-class design principles from leading tech companie
 3. Backend validates and enhances the specification
 4. PptxGenJS renders the specification into a professional PowerPoint file
 5. User downloads the PPTX or views live preview
+
+## 🔧 Critical Fixes Applied (October 23, 2025)
+
+### Issue: PowerPoint Corruption & Missing Styling
+
+**Root Causes Identified:**
+1. **Shadow Opacity Bug**: Shadow opacity was set to `20` (integer) instead of `0.08` (decimal), causing invalid XML
+2. **Professional Slide Builder Not Used**: Main export pipeline was using basic builder instead of enhanced professional builder
+3. **Missing Design Field Fallbacks**: Code assumed `spec.design` field existed, but V1 specs don't have it
+4. **Type Safety Issues**: Unsafe property access without proper null checks
+
+**Fixes Implemented:**
+
+1. **Fixed Shadow Opacity** (`functions/src/index.ts` line 330)
+   - Changed: `opacity: 20` → `opacity: 0.08`
+   - Reason: PptxGenJS expects decimal values (0-1), not percentages
+
+2. **Integrated Professional Slide Builder** (`functions/src/index.ts` lines 263-275)
+   - Added check for `spec.design.pattern` to detect V2 specs
+   - Routes V2 specs to `buildProfessionalSlide()` for professional styling
+   - Falls back to basic builder for V1 specs
+   - Proper error handling with logging
+
+3. **Added Fallback Values** (`functions/src/pptxBuilder/slideBuilder.ts`)
+   - Line 75: `spec.design?.colorStrategy?.emphasis || colors.accent || "#10B981"`
+   - Line 181: `spec.design?.typography?.fontPairing?.primary || spec.styleTokens.typography.fonts.sans || "Arial"`
+   - Line 328: `spec.design?.typography?.fontPairing?.secondary || spec.styleTokens.typography.fonts.sans || "Arial"`
+   - All pattern checks now use optional chaining (`?.`)
+
+4. **Validation & Error Handling** (`functions/src/pptxBuilder/slideBuilder.ts` lines 21-32)
+   - Added spec validation before processing
+   - Proper error messages for debugging
+   - Graceful fallback to basic builder on error
+
+**Result:**
+- ✅ PPTX files now generate without corruption
+- ✅ All ZIP archive files validate correctly
+- ✅ Professional styling applied when design tokens present
+- ✅ Backward compatible with existing V1 specs
+- ✅ No PowerPoint repair dialogs
 
 ## ✅ Comprehensive Verification
 

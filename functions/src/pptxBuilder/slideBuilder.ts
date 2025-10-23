@@ -22,6 +22,11 @@ export async function buildProfessionalSlide(
   pptx: PptxGenJS,
   spec: SlideSpecV2
 ): Promise<void> {
+  // Validate spec has required fields
+  if (!spec.design || !spec.styleTokens) {
+    throw new Error("Spec missing design or styleTokens");
+  }
+
   const slide = pptx.addSlide();
 
   // Map design tokens
@@ -64,59 +69,62 @@ function applyBackground(
     transparency: 0
   };
 
+  // Get accent color with fallback
+  const accentColor = spec.design?.colorStrategy?.emphasis || colors.accent || "#10B981";
+
   // Add sophisticated accent bar for premium feel
-  if (spec.design.pattern === "hero" || spec.design.pattern === "minimal") {
+  if (spec.design?.pattern === "hero" || spec.design?.pattern === "minimal") {
     // Add subtle accent line at top for visual interest
     slide.addShape(PptxGenJS.ShapeType.rect, {
       x: 0,
       y: 0,
       w: "100%",
       h: 0.08,
-      fill: { color: spec.design.colorStrategy.emphasis },
+      fill: { color: accentColor },
       line: { type: "none" }
     });
   }
 
   // Add decorative accent bar for data-focused pattern
-  if (spec.design.pattern === "data-focused") {
+  if (spec.design?.pattern === "data-focused") {
     slide.addShape(PptxGenJS.ShapeType.rect, {
       x: 0,
       y: 0,
       w: 0.04,
       h: "100%",
-      fill: { color: spec.design.colorStrategy.emphasis },
+      fill: { color: accentColor },
       line: { type: "none" }
     });
   }
 
   // Add subtle gradient overlay for split pattern
-  if (spec.design.pattern === "split") {
+  if (spec.design?.pattern === "split") {
     // Left accent
     slide.addShape(PptxGenJS.ShapeType.rect, {
       x: 0,
       y: 0,
       w: 0.02,
       h: "100%",
-      fill: { color: spec.design.colorStrategy.emphasis },
+      fill: { color: accentColor },
       line: { type: "none" }
     });
   }
 
   // Add asymmetric pattern accent
-  if (spec.design.pattern === "asymmetric") {
+  if (spec.design?.pattern === "asymmetric") {
     // Diagonal accent element for dynamic feel
     slide.addShape(PptxGenJS.ShapeType.rect, {
       x: 8.5,
       y: 0,
       w: 1.5,
       h: 0.06,
-      fill: { color: spec.design.colorStrategy.emphasis },
+      fill: { color: accentColor },
       line: { type: "none" }
     });
   }
 
   // Add grid pattern subtle dividers
-  if (spec.design.pattern === "grid") {
+  if (spec.design?.pattern === "grid") {
     // Subtle divider lines for grid structure
     const dividerColor = "#E5E7EB";
     slide.addShape(PptxGenJS.ShapeType.rect, {
@@ -157,12 +165,14 @@ function renderTitle(
   const rect = regions[titleAnchor.region];
   if (!rect) return;
 
-  const titleConfig = spec.design.typography.hierarchy.title || {
+  const titleConfig = spec.design?.typography?.hierarchy?.title || {
     size: typography.title.fontSize,
     weight: 700,
     lineHeight: 1.2,
     letterSpacing: 0.5
   };
+
+  const fontPrimary = spec.design?.typography?.fontPairing?.primary || spec.styleTokens.typography.fonts.sans || "Arial";
 
   // Premium title with enhanced spacing and color
   slide.addText(title.text, {
@@ -170,7 +180,7 @@ function renderTitle(
     y: rect.y,
     w: rect.w,
     h: rect.h,
-    fontFace: spec.design.typography.fontPairing.primary,
+    fontFace: fontPrimary,
     fontSize: titleConfig.size,
     bold: titleConfig.weight >= 600,
     color: colors.primary || colors.text,
@@ -310,12 +320,14 @@ function renderCallouts(
 
   // Add callout text
   const text = `${callout.title ? callout.title + " — " : ""}${callout.text}`;
+  const fontSecondary = spec.design?.typography?.fontPairing?.secondary || spec.styleTokens.typography.fonts.sans || "Arial";
+
   slide.addText(text, {
     x: rect.x + 0.15,
     y: rect.y + 0.15,
     w: rect.w - 0.3,
     h: rect.h - 0.3,
-    fontFace: spec.design.typography.fontPairing.secondary,
+    fontFace: fontSecondary,
     fontSize: typography.body.fontSize,
     color: colors.text,
     align: "left",

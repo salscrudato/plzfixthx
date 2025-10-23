@@ -15,6 +15,9 @@ import { fetch as undiciFetch } from "undici";
 import { callAIWithRetry, sanitizePrompt, moderateContent, enhanceSlideSpec } from "./aiHelpers";
 import { ENHANCED_SYSTEM_PROMPT } from "./prompts";
 
+// Import PPTX builder
+import { buildProfessionalSlide } from "./pptxBuilder";
+
 // Define secrets
 const AI_API_KEY = defineSecret("AI_API_KEY");
 const AI_BASE_URL = defineSecret("AI_BASE_URL");
@@ -259,6 +262,17 @@ async function buildPptx(specs: SlideSpec | SlideSpec[]): Promise<ArrayBuffer> {
 
 /** Build a single slide */
 async function buildSlide(pptx: PptxGenJS, spec: SlideSpec): Promise<void> {
+  try {
+    // Try to use professional slide builder if spec has design field (V2)
+    if ((spec as any).design && (spec as any).design.pattern) {
+      await buildProfessionalSlide(pptx, spec as any);
+      return;
+    }
+  } catch (e) {
+    logger.warn("Professional slide builder failed, falling back to basic builder", { error: String(e) });
+  }
+
+  // Fallback to basic builder for V1 specs
   const slide = pptx.addSlide();
 
   // Helpers
@@ -327,7 +341,7 @@ async function buildSlide(pptx: PptxGenJS, spec: SlideSpec): Promise<void> {
       slide.addShape(pptx.ShapeType.roundRect, {
         x: rect.x, y: rect.y, w: rect.w, h: 1.2,
         fill: { color: "FFFFFF" }, line: { color: spec.styleTokens.palette.accent },
-        shadow: { type: "outer", color: "000000", opacity: 20, blur: 4, offset: 2 }
+        shadow: { type: "outer", color: "000000", opacity: 0.08, blur: 4, offset: 2 }
       });
       slide.addText(`${co.title ? co.title + " — " : ""}${co.text}`, {
         x: rect.x + 0.1, y: rect.y + 0.15, w: rect.w - 0.2, h: 0.9,
