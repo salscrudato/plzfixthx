@@ -4,6 +4,7 @@ import { SlideCanvas } from "@/components/SlideCanvas";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { ProgressIndicator } from "@/components/ProgressIndicator";
 import { ToastContainer, useToast } from "@/components/Toast";
+import { SlideChat } from "@/components/SlideChat";
 import { useSlideGeneration } from "@/hooks/useSlideGeneration";
 import { useSlideExport } from "@/hooks/useSlideExport";
 
@@ -11,10 +12,19 @@ const MAX_PROMPT_LENGTH = 800;
 
 export default function App() {
   const [prompt, setPrompt] = useState("");
+  const [useChat, setUseChat] = useState(true);
 
   const { loading, spec, error, generate } = useSlideGeneration();
   const { exporting, exportSlide } = useSlideExport();
   const toast = useToast();
+
+  const handleChatReady = useCallback(async (slidePrompt: string) => {
+    setPrompt(slidePrompt);
+    const result = await generate(slidePrompt);
+    if (result) {
+      toast.success("Slide generated successfully!");
+    }
+  }, [generate, toast]);
 
   useEffect(() => {
     if (error) {
@@ -78,9 +88,37 @@ export default function App() {
           </p>
         </header>
 
+        {/* Mode Toggle */}
+        <div className="flex justify-center gap-4 animate-fade-in">
+          <button
+            onClick={() => setUseChat(true)}
+            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              useChat
+                ? "bg-[var(--color-primary)] text-white shadow-lg"
+                : "bg-white text-[var(--neutral-1)] border border-[var(--neutral-7)] hover:border-[var(--color-primary)]"
+            }`}
+          >
+            💬 Chat Mode
+          </button>
+          <button
+            onClick={() => setUseChat(false)}
+            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              !useChat
+                ? "bg-[var(--color-primary)] text-white shadow-lg"
+                : "bg-white text-[var(--neutral-1)] border border-[var(--neutral-7)] hover:border-[var(--color-primary)]"
+            }`}
+          >
+            ✏️ Direct Input
+          </button>
+        </div>
+
         {/* Premium Main Input Card */}
-        <main id="main-content" className="glass rounded-[var(--radius-2xl)] p-8 sm:p-10 lg:p-12 animate-scale-in shadow-lg border border-white/20">
-          <form onSubmit={handleGenerate} className="space-y-8" aria-label="Slide generation form">
+        <main id="main-content" className="animate-scale-in">
+          {useChat ? (
+            <SlideChat onSlideReady={handleChatReady} isGenerating={loading} />
+          ) : (
+            <div className="glass rounded-[var(--radius-2xl)] p-8 sm:p-10 lg:p-12 shadow-lg border border-white/20">
+              <form onSubmit={handleGenerate} className="space-y-8" aria-label="Slide generation form">
             <div className="space-y-4">
               <label htmlFor="prompt-input" className="block text-lg font-semibold text-[var(--neutral-1)]" style={{ letterSpacing: '-0.01em' }}>
                 Describe your slide
@@ -149,7 +187,9 @@ export default function App() {
                 {loading ? "Generating..." : "Generate Slide"}
               </button>
             </div>
-          </form>
+              </form>
+            </div>
+          )}
         </main>
 
 
