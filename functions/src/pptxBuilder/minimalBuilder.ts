@@ -20,16 +20,16 @@ export async function buildMinimalSlide(
   // Set background to white
   slide.background = { fill: "FFFFFF" };
 
-  // Add title
+  // Add title (always 28px)
   const title = spec.content.title;
   if (title && title.text) {
     slide.addText(title.text, {
       x: 0.5,
       y: 0.5,
       w: 9,
-      h: 1,
+      h: 0.6,
       fontFace: "Aptos",
-      fontSize: 44,
+      fontSize: 28,
       bold: true,
       color: "000000",
       align: "left",
@@ -42,11 +42,11 @@ export async function buildMinimalSlide(
   if (subtitle && subtitle.text) {
     slide.addText(subtitle.text, {
       x: 0.5,
-      y: 1.6,
+      y: 1.2,
       w: 9,
-      h: 0.5,
+      h: 0.4,
       fontFace: "Aptos",
-      fontSize: 24,
+      fontSize: 18,
       color: "666666",
       align: "left",
       valign: "top"
