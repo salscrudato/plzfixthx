@@ -5,15 +5,16 @@ import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { ProgressIndicator } from "@/components/ProgressIndicator";
 import { ToastContainer, useToast } from "@/components/Toast";
 import { SlideChat } from "@/components/SlideChat";
+import { SlideBuilder } from "@/components/SlideBuilder";
 import { useSlideGeneration } from "@/hooks/useSlideGeneration";
 import { useSlideExport } from "@/hooks/useSlideExport";
-import { MessageCircle, PenTool, Download, Loader } from "lucide-react";
+import { MessageCircle, PenTool, Download, Loader, Wand2 } from "lucide-react";
 
 const MAX_PROMPT_LENGTH = 800;
 
 export default function App() {
   const [prompt, setPrompt] = useState("");
-  const [useChat, setUseChat] = useState(true);
+  const [mode, setMode] = useState<"chat" | "builder" | "direct">("builder");
 
   const { loading, spec, error, generate } = useSlideGeneration();
   const { exporting, exportSlide } = useSlideExport();
@@ -90,34 +91,47 @@ export default function App() {
         </header>
 
         {/* Mode Toggle */}
-        <div className="flex justify-center gap-4 animate-fade-in">
+        <div className="flex justify-center gap-3 animate-fade-in flex-wrap">
           <button
-            onClick={() => setUseChat(true)}
+            onClick={() => setMode("builder")}
             className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${
-              useChat
+              mode === "builder"
+                ? "bg-[var(--color-primary)] text-white shadow-lg"
+                : "bg-white text-[var(--neutral-1)] border border-[var(--neutral-7)] hover:border-[var(--color-primary)]"
+            }`}
+          >
+            <Wand2 size={18} />
+            Builder
+          </button>
+          <button
+            onClick={() => setMode("chat")}
+            className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${
+              mode === "chat"
                 ? "bg-[var(--color-primary)] text-white shadow-lg"
                 : "bg-white text-[var(--neutral-1)] border border-[var(--neutral-7)] hover:border-[var(--color-primary)]"
             }`}
           >
             <MessageCircle size={18} />
-            Chat Mode
+            Chat
           </button>
           <button
-            onClick={() => setUseChat(false)}
+            onClick={() => setMode("direct")}
             className={`px-6 py-3 rounded-lg font-semibold transition-all flex items-center gap-2 ${
-              !useChat
+              mode === "direct"
                 ? "bg-[var(--color-primary)] text-white shadow-lg"
                 : "bg-white text-[var(--neutral-1)] border border-[var(--neutral-7)] hover:border-[var(--color-primary)]"
             }`}
           >
             <PenTool size={18} />
-            Direct Input
+            Direct
           </button>
         </div>
 
         {/* Premium Main Input Card */}
         <main id="main-content" className="animate-scale-in">
-          {useChat ? (
+          {mode === "builder" ? (
+            <SlideBuilder onSlideReady={handleChatReady} isGenerating={loading} />
+          ) : mode === "chat" ? (
             <SlideChat onSlideReady={handleChatReady} isGenerating={loading} />
           ) : (
             <div className="glass rounded-[var(--radius-2xl)] p-8 sm:p-10 lg:p-12 shadow-lg border border-white/20">
