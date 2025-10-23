@@ -20,65 +20,64 @@ export async function buildMinimalSlide(
   // Set background to white
   slide.background = { fill: "FFFFFF" };
 
-  // Get title
+  // Add title
   const title = spec.content.title;
   if (title && title.text) {
-    // Add title in top left
-    // Using Aptos font (modern, clean, default in Office)
     slide.addText(title.text, {
-      x: 0.5,           // 0.5 inches from left
-      y: 0.5,           // 0.5 inches from top
-      w: 9,             // 9 inches wide
-      h: 1,             // 1 inch tall
-      fontFace: "Aptos", // Modern, clean font
-      fontSize: 44,     // Large title
+      x: 0.5,
+      y: 0.5,
+      w: 9,
+      h: 1,
+      fontFace: "Aptos",
+      fontSize: 44,
       bold: true,
-      color: "000000",  // Black text
+      color: "000000",
       align: "left",
       valign: "top"
     });
   }
 
-  // Get subtitle if present
+  // Add subtitle
   const subtitle = spec.content.subtitle;
   if (subtitle && subtitle.text) {
     slide.addText(subtitle.text, {
       x: 0.5,
-      y: 1.7,           // Below title
+      y: 1.6,
       w: 9,
-      h: 0.6,
+      h: 0.5,
       fontFace: "Aptos",
-      fontSize: 24,     // Smaller than title
-      color: "666666",  // Gray text
+      fontSize: 24,
+      color: "666666",
       align: "left",
       valign: "top"
     });
   }
 
-  // Get bullets if present
+  // Add bullets with proper spacing
   const bullets = spec.content.bullets?.[0];
   if (bullets && bullets.items && bullets.items.length > 0) {
-    // Format bullet items for PptxGenJS
-    const bulletItems = bullets.items.map((item: any) => ({
-      text: item.text,
-      options: {
-        bullet: true,
-        indentLevel: Math.max(0, item.level - 1)
-      }
-    }));
+    // Format each bullet as a separate text element for proper spacing
+    let currentY = 2.3;
+    const lineHeight = 0.35; // Space between bullet lines
 
-    slide.addText(bulletItems, {
-      x: 0.5,
-      y: 2.5,           // Below subtitle
-      w: 9,
-      h: 4,             // Plenty of space for bullets
-      fontFace: "Aptos",
-      fontSize: 18,     // Body text size
-      color: "000000",
-      align: "left",
-      valign: "top",
-      wrap: true
-    });
+    for (const item of bullets.items) {
+      const bulletText = "• " + item.text;
+
+      slide.addText(bulletText, {
+        x: 0.7,
+        y: currentY,
+        w: 8.8,
+        h: lineHeight,
+        fontFace: "Aptos",
+        fontSize: 18,
+        color: "000000",
+        align: "left",
+        valign: "top",
+        wrap: true
+      });
+
+      currentY += lineHeight + 0.05; // Add spacing between bullets
+    }
   }
 }
 
