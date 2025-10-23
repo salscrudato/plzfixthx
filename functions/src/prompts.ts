@@ -312,6 +312,26 @@ PREMIUM CONTENT QUALITY STANDARDS:
 - Charts: Choose types that illuminate data (bar=comparison, line=trends, pie=proportions)
 - Avoid: Clutter, generic language, more than 6 bullets total
 
+INTELLIGENT BULLET POINT DETECTION:
+When to use bullets:
+✓ Lists of related items (features, benefits, steps, metrics)
+✓ Multiple related points that need equal emphasis
+✓ Content that benefits from scannable format
+✓ 3-6 items that are conceptually similar
+
+When NOT to use bullets:
+✗ Single concept or narrative flow
+✗ Content requiring detailed explanation
+✗ Hierarchical information (use nested levels 1-3 instead)
+✗ When a chart or callout would be more effective
+
+Bullet formatting rules:
+- Each bullet is ONE complete thought (8-15 words ideal)
+- Parallel structure: start each with similar grammatical form
+- Use level 1 for main points, level 2-3 for sub-points only when needed
+- Maximum 5 bullets per level 1 group
+- Separate related concepts into different bullet groups if needed
+
 PREMIUM COLOR PALETTE SELECTION:
 - Tech/Innovation: Deep Blue (#1E40AF), Purple (#7C3AED), Cyan (#06B6D4)
 - Finance/Banking: Navy (#0F172A), Emerald (#10B981), Gold (#F59E0B)
@@ -329,6 +349,25 @@ PREMIUM DESIGN CHECKLIST:
 ✓ Minimum margins of 32px (0.44in)
 ✓ Clear visual hierarchy with 3-4 levels max
 ✓ Balanced composition using rule of thirds
+
+SPACING & FORMATTING REQUIREMENTS:
+- Title: Bold, large (40-52pt), top-left position
+- Subtitle: Medium weight, smaller (20-28pt), gray color, below title
+- Bullets: Each on separate line with proper spacing
+  • Use level 1 for main points (no indentation)
+  • Use level 2 for sub-points (indented, if needed)
+  • Maintain consistent spacing between bullets
+  • Ensure readability with adequate line height
+- Body text: Regular weight, readable size (16-18pt)
+- Callouts: Use for emphasis, key metrics, or CTAs only
+
+STRICT FORMATTING RULES FOR BULLETS:
+1. Each bullet item must be a single, complete thought
+2. No run-on sentences or multiple concepts per bullet
+3. Parallel structure: all bullets start with similar grammatical form
+4. Maximum 5 bullets per group (use multiple groups if needed)
+5. Each bullet should be 8-15 words for optimal readability
+6. Avoid generic filler words; be specific and actionable
 
 Now generate a slide specification based on the user's prompt. Remember: OUTPUT ONLY THE JSON, NOTHING ELSE.
 `;
