@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useToast } from "./Toast";
+import { MessageCircle, Send, Loader } from "lucide-react";
 
 interface Message {
   id: string;
@@ -18,7 +19,7 @@ export function SlideChat({ onSlideReady, isGenerating = false }: ChatProps) {
     {
       id: "1",
       role: "assistant",
-      content: "Hi! 👋 I'm here to help you create an amazing slide. Let's start with the basics. What's the main topic or title for your slide?",
+      content: "Hi! I'm here to help you create an amazing slide. Let's start with the basics. What's the main topic or title for your slide?",
       timestamp: Date.now(),
     },
   ]);
@@ -43,38 +44,52 @@ export function SlideChat({ onSlideReady, isGenerating = false }: ChatProps) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: `You are a helpful assistant gathering information to create a professional PowerPoint slide. 
-            
+            prompt: `You are a helpful assistant gathering information to create a professional PowerPoint slide.
+
 User message: "${userMessage}"
 
 Previous conversation:
 ${conversationHistory.map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`).join("\n")}
 
-Based on the conversation so far, determine:
-1. Do we have enough information to create a slide? (title, content/bullets, and context)
-2. If yes, respond with: "READY_TO_CREATE: [comprehensive prompt for slide generation]"
-3. If no, ask ONE specific follow-up question to gather more information.
+TASK: Based on the conversation, determine what information we still need and ask ONE specific follow-up question.
 
-Keep responses concise and friendly. Ask about: title, main content/key points, design style preference, or any specific data/metrics.`,
+INFORMATION NEEDED (in order):
+1. Title/Topic - What is the slide about?
+2. Main Content - What are the key points or bullet points?
+3. Additional Details - Any specific data, metrics, or context?
+4. Design Preference - Any style preferences (professional, creative, minimal, etc.)?
+
+RESPONSE FORMAT:
+- If we have title, content, and enough context: Respond with "READY_TO_CREATE: [comprehensive slide prompt]"
+- Otherwise: Ask ONE specific, natural follow-up question to gather missing information
+
+EXAMPLES OF GOOD QUESTIONS:
+- "What are the 3-5 main points you want to highlight?"
+- "Do you have any specific numbers or metrics to include?"
+- "What's the audience for this slide?"
+- "Would you prefer a professional or creative design style?"
+- "Any specific color scheme or branding guidelines?"
+
+Keep responses concise, friendly, and natural. Never say "I need more information" - always ask a specific question.`,
           }),
         }
       );
 
       if (!response.ok) throw new Error("Failed to generate response");
       const data = await response.json();
-      
-      let assistantMessage = data.slideSpec?.content?.title || "I need more information.";
-      
+
+      let assistantMessage = data.slideSpec?.content?.title || "What are the key points or main content you'd like on this slide?";
+
       // Check if we have enough info
       if (assistantMessage.includes("READY_TO_CREATE:")) {
         const slidePrompt = assistantMessage.replace("READY_TO_CREATE:", "").trim();
-        return { message: "Perfect! I have all the information I need. Creating your slide now... 🎨", isReady: true, slidePrompt };
+        return { message: "Perfect! I have all the information I need. Creating your slide now...", isReady: true, slidePrompt };
       }
 
       return { message: assistantMessage, isReady: false };
     } catch (error) {
       console.error("Error generating response:", error);
-      return { message: "Let me ask you this: What are the key points or content you'd like on this slide?", isReady: false };
+      return { message: "What are the key points or main content you'd like on this slide?", isReady: false };
     }
   };
 
@@ -123,8 +138,11 @@ Keep responses concise and friendly. Ask about: title, main content/key points, 
     <div className="flex flex-col h-full bg-white rounded-[var(--radius-2xl)] shadow-lg border border-[var(--neutral-7)] overflow-hidden">
       {/* Chat Header */}
       <div className="bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-accent)] px-6 py-4 text-white">
-        <h2 className="text-lg font-semibold">Slide Builder Chat</h2>
-        <p className="text-sm opacity-90">Let's create your slide together</p>
+        <div className="flex items-center gap-2">
+          <MessageCircle size={20} />
+          <h2 className="text-lg font-semibold">Slide Builder Chat</h2>
+        </div>
+        <p className="text-sm opacity-90 mt-1">Let's create your slide together</p>
       </div>
 
       {/* Messages Container */}
@@ -173,9 +191,13 @@ Keep responses concise and friendly. Ask about: title, main content/key points, 
           <button
             type="submit"
             disabled={loading || isGenerating || !input.trim()}
-            className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg font-medium hover:bg-[var(--color-primary-dark)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 bg-[var(--color-primary)] text-white rounded-lg font-medium hover:bg-[var(--color-primary-dark)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
           >
-            {loading ? "..." : "Send"}
+            {loading ? (
+              <Loader size={18} className="animate-spin" />
+            ) : (
+              <Send size={18} />
+            )}
           </button>
         </form>
       </div>
