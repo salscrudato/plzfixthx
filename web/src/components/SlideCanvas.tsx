@@ -1,31 +1,18 @@
 import { useEffect, useState, useMemo } from "react";
 import type { SlideSpecV1 } from "@/types/SlideSpecV1";
-import type { SlideSpecV2 } from "@/types/SlideSpecV2";
-import { Chart } from "./Chart";
-import { logDiagnostics, validateLayoutCalculations } from "@/utils/slideDebugger";
 
-type SlideSpec = SlideSpecV1 | SlideSpecV2;
-
-export function SlideCanvas({ spec }: { spec: SlideSpec }) {
+export function SlideCanvas({ spec }: { spec: SlideSpecV1 }) {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    // Log diagnostics when spec changes
-    console.log("🎨 SlideCanvas spec:", spec);
-    console.log("📋 Content:", spec.content);
-    console.log("📐 Layout:", spec.layout);
-    logDiagnostics(spec as SlideSpecV1);
-    validateLayoutCalculations(spec as SlideSpecV1);
-
     // Trigger animation when spec changes
     setIsVisible(false);
     const timer = setTimeout(() => setIsVisible(true), 50);
     return () => clearTimeout(timer);
   }, [spec]);
 
-  // Get design tokens from spec (handle both V1 and V2)
+  // Get design tokens from spec
   const designTokens = useMemo(() => {
-    const v2Spec = spec as SlideSpecV2;
     const v1Spec = spec as SlideSpecV1;
 
     // Extract palette and typography from styleTokens
@@ -45,8 +32,8 @@ export function SlideCanvas({ spec }: { spec: SlideSpec }) {
     return {
       palette,
       typography,
-      pattern: v2Spec.design?.pattern || "split",
-      whitespace: v2Spec.design?.whitespace || { strategy: "balanced", breathingRoom: 30 },
+      pattern: "split",
+      whitespace: { strategy: "balanced", breathingRoom: 30 },
     };
   }, [spec]);
 
@@ -88,7 +75,7 @@ export function SlideCanvas({ spec }: { spec: SlideSpec }) {
   );
 }
 
-function renderRegions(spec: SlideSpec, designTokens: any) {
+function renderRegions(spec: SlideSpecV1, designTokens: any) {
   const { rows, cols, gutter, margin } = spec.layout.grid;
 
   // Convert pixel values to percentages for responsive layout
@@ -119,19 +106,19 @@ function renderRegions(spec: SlideSpec, designTokens: any) {
 
   return (
     <div style={gridStyle}>
-      {spec.layout.regions.map((r, i) => (
+      {spec.layout.regions.map((r: any, i: number) => (
         <div key={i} style={regionToStyle(r)}>
           {spec.layout.anchors
-            .filter(a => a.region === r.name)
-            .sort((a, b) => a.order - b.order)
-            .map(a => <ElementByRef key={a.refId} spec={spec} refId={a.refId} designTokens={designTokens} />)}
+            .filter((a: any) => a.region === r.name)
+            .sort((a: any, b: any) => a.order - b.order)
+            .map((a: any) => <ElementByRef key={a.refId} spec={spec} refId={a.refId} designTokens={designTokens} />)}
         </div>
       ))}
     </div>
   );
 }
 
-function ElementByRef({ spec, refId, designTokens }: { spec: SlideSpec; refId: string; designTokens: any }) {
+function ElementByRef({ spec, refId, designTokens }: { spec: SlideSpecV1; refId: string; designTokens: any }) {
   const c = spec.content;
 
   // Get typography config from design tokens
@@ -254,15 +241,19 @@ function ElementByRef({ spec, refId, designTokens }: { spec: SlideSpec; refId: s
 
   if (c.dataViz?.id === refId) {
     return (
-      <div style={{ width: '100%', height: '100%', minHeight: '200px' }}>
-        <Chart
-          labels={c.dataViz.labels}
-          series={c.dataViz.series}
-          kind={c.dataViz.kind}
-          title={c.dataViz.title}
-          valueFormat={c.dataViz.valueFormat}
-          colors={designTokens?.palette ? [designTokens.palette.primary, designTokens.palette.accent] : undefined}
-        />
+      <div style={{
+        width: '100%',
+        height: '100%',
+        minHeight: '200px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: designTokens?.palette?.neutral[6] || '#F1F5F9',
+        borderRadius: '8px',
+        color: designTokens?.palette?.neutral[3] || '#64748B',
+        fontSize: '14px'
+      }}>
+        Data visualization placeholder
       </div>
     );
   }

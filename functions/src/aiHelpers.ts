@@ -2,11 +2,35 @@ import * as logger from "firebase-functions/logger";
 import { fetch as undiciFetch } from "undici";
 import { z } from "zod";
 import { ENHANCED_SYSTEM_PROMPT } from "./prompts";
-import {
-  ensureContrast,
-  validateBulletCount,
-  validateDataVizSeries
-} from "./pptxBuilder/dimensionHelpers";
+
+/** Simple contrast ratio calculator */
+function ensureContrast(textColor: string, bgColor: string, minRatio: number) {
+  const getLuminance = (hex: string) => {
+    const rgb = parseInt(hex.slice(1), 16);
+    const r = (rgb >> 16) & 0xff;
+    const g = (rgb >> 8) & 0xff;
+    const b = (rgb >> 0) & 0xff;
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.5 ? luminance : 1 - luminance;
+  };
+  const l1 = getLuminance(textColor);
+  const l2 = getLuminance(bgColor);
+  const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  return { compliant: ratio >= minRatio, ratio };
+}
+
+/** Validate bullet count */
+function validateBulletCount(bullets: any[], maxPerGroup: number) {
+  const valid = bullets.every(b => !b.items || b.items.length <= maxPerGroup);
+  return { valid, maxPerGroup };
+}
+
+/** Validate data visualization */
+function validateDataVizSeries(dataViz: any) {
+  const valid = dataViz.labels && dataViz.series &&
+    dataViz.series.every((s: any) => s.values.length === dataViz.labels.length);
+  return { valid };
+}
 
 /** Retry with exponential backoff */
 export async function retryWithBackoff<T>(

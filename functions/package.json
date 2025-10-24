@@ -7,11 +7,7 @@
     "lint": "eslint --ext .ts src",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage",
-    "test:pptx": "npm run build && node lib/pptxBuilder/testSlideGeneration.js",
-    "test:pptx:visual": "npm run build && node lib/pptxBuilder/visualVerificationTest.js",
-    "test:pptx:e2e": "npm run build && node lib/pptxBuilder/endToEndTest.js",
-    "test:pptx:all": "npm run build && node lib/pptxBuilder/runAllTests.js"
+    "test:coverage": "vitest --coverage"
   },
   "engines": {
     "node": "20"

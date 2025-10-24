@@ -14,16 +14,9 @@ import { fetch as undiciFetch } from "undici";
 // Import AI helpers
 import { callAIWithRetry, sanitizePrompt, moderateContent, enhanceSlideSpec } from "./aiHelpers";
 import { ENHANCED_SYSTEM_PROMPT } from "./prompts";
-import { generatePresentationPrompt, analyzePresentationRequest, validatePresentationFlow } from "./presentationAI";
-import type { PresentationRequest } from "./presentationAI";
 
-// Import PPTX builders
-import { buildProfessionalSlide } from "./pptxBuilder";
-import { buildMinimalSlide } from "./pptxBuilder/minimalBuilder";
-import { buildHybridSlide } from "./pptxBuilder/hybridBuilder";
-import { buildPremiumSlide } from "./pptxBuilder/premiumBuilder";
-import { buildLayoutSlide } from "./pptxBuilder/layoutBuilder";
-import { buildWithFallback, getSlideDims } from "./pptxBuilder/orchestrator";
+// Import PPTX builder
+import { buildHeaderOnlySlide } from "./pptxBuilder";
 
 // Define secrets
 const AI_API_KEY = defineSecret("AI_API_KEY");
@@ -400,25 +393,33 @@ async function buildPptx(specs: SlideSpec | SlideSpec[]): Promise<ArrayBuffer> {
   return pptx.write({ outputType: "arraybuffer" }) as Promise<ArrayBuffer>;
 }
 
-/** Build a single slide using orchestrator with multi-tier fallback */
+/** Build a single slide with header and subtitle */
 async function buildSlide(pptx: PptxGenJS, spec: SlideSpec): Promise<void> {
-  logger.info("🏗️ buildSlide called", {
+  logger.info("🏗️ Building slide", {
     hasTitle: !!spec.content.title,
     hasSubtitle: !!spec.content.subtitle,
-    hasLayout: !!spec.layout,
     aspectRatio: spec.meta.aspectRatio
   });
 
   try {
-    // Use orchestrator for multi-tier fallback: Layout → Hybrid → Premium → Minimal
-    const result = await buildWithFallback(pptx, spec as any);
+    // Extract header and subtitle from spec
+    const header = spec.content.title?.text || "Slide";
+    const subtitle = spec.content.subtitle?.text || "";
+    const color = spec.styleTokens.palette.primary || "#6366F1";
+
+    // Build header-only slide
+    await buildHeaderOnlySlide(pptx, {
+      header,
+      subtitle,
+      color
+    });
+
     logger.info("✅ Slide built successfully", {
-      stage: result.stage,
-      totalDuration: result.totalDuration,
-      metrics: result.metrics
+      headerLength: header.length,
+      subtitleLength: subtitle.length
     });
   } catch (error) {
-    logger.error("❌ All builders failed", {
+    logger.error("❌ Slide build failed", {
       error: String(error),
       spec: {
         title: spec.content.title?.text?.substring(0, 50),
@@ -429,183 +430,7 @@ async function buildSlide(pptx: PptxGenJS, spec: SlideSpec): Promise<void> {
   }
 }
 
-/** Legacy basic builder - kept for reference */
-async function buildSlideBasic(pptx: PptxGenJS, spec: SlideSpec): Promise<void> {
-  const slide = pptx.addSlide();
 
-  // Helpers
-  const pxToIn = (px: number) => (px * 0.75) / 72;
-  const { rows, cols, gutter, margin } = spec.layout.grid;
-  const slideW = pptx.presLayout.width;
-  const slideH = pptx.presLayout.height;
-  const pad = { t: pxToIn(margin.t), r: pxToIn(margin.r), b: pxToIn(margin.b), l: pxToIn(margin.l) };
-  const gridW = slideW - pad.l - pad.r;
-  const gridH = slideH - pad.t - pad.b;
-  const cellW = (gridW - ((cols - 1) * pxToIn(gutter))) / cols;
-  const cellH = (gridH - ((rows - 1) * pxToIn(gutter))) / rows;
 
-  const regionRect = (r: any) => ({
-    x: pad.l + (r.colStart - 1) * (cellW + pxToIn(gutter)),
-    y: pad.t + (r.rowStart - 1) * (cellH + pxToIn(gutter)),
-    w: r.colSpan * cellW + (r.colSpan - 1) * pxToIn(gutter),
-    h: r.rowSpan * cellH + (r.rowSpan - 1) * pxToIn(gutter)
-  });
-  const regions: Record<string, any> = {};
-  spec.layout.regions.forEach(r => { regions[r.name] = regionRect(r); });
 
-  const fonts = spec.styleTokens.typography.fonts;
-  const sizes = spec.styleTokens.typography.sizes;
-  const colorText = spec.styleTokens.palette.neutral[0];
-
-  // Title
-  const tA = spec.layout.anchors.find(a => a.refId === spec.content.title.id);
-  if (tA) {
-    const rect = regions[tA.region];
-    slide.addText(spec.content.title.text, {
-      x: rect.x, y: rect.y, w: rect.w, h: 1,
-      fontFace: fonts.sans, fontSize: sizes.step_3 * 0.75, bold: true, color: colorText, align: spec.components?.title?.align || "left"
-    });
-  }
-
-  // Subtitle
-  const sub = spec.content.subtitle;
-  if (sub) {
-    const a = spec.layout.anchors.find(x => x.refId === sub.id);
-    if (a) {
-      const rect = regions[a.region];
-      slide.addText(sub.text, { x: rect.x, y: rect.y + 0.7, w: rect.w, h: 0.7, fontFace: fonts.sans, fontSize: sizes.step_1 * 0.75, color: colorText });
-    }
-  }
-
-  // Bullets (first list)
-  const bl = spec.content.bullets?.[0];
-  if (bl) {
-    const a = spec.layout.anchors.find(x => x.refId === bl.id);
-    if (a) {
-      const rect = regions[a.region];
-      slide.addText(
-        bl.items.map(it => ({ text: it.text, options: { bullet: true, indentLevel: it.level - 1 } })),
-        { x: rect.x, y: rect.y, w: rect.w, h: rect.h, fontFace: fonts.sans, fontSize: sizes.step_0 * 0.75, color: colorText, wrap: true }
-      );
-    }
-  }
-
-  // Callout (first)
-  const co = spec.content.callouts?.[0];
-  if (co) {
-    const a = spec.layout.anchors.find(x => x.refId === co.id);
-    if (a) {
-      const rect = regions[a.region];
-      slide.addShape(pptx.ShapeType.roundRect, {
-        x: rect.x, y: rect.y, w: rect.w, h: 1.2,
-        fill: { color: "FFFFFF" }, line: { color: spec.styleTokens.palette.accent },
-        shadow: { type: "outer", color: "000000", opacity: 0.08, blur: 4, offset: 2 }
-      });
-      slide.addText(`${co.title ? co.title + " — " : ""}${co.text}`, {
-        x: rect.x + 0.1, y: rect.y + 0.15, w: rect.w - 0.2, h: 0.9,
-        fontFace: fonts.sans, fontSize: sizes.step_0 * 0.75, color: colorText
-      });
-    }
-  }
-
-  // Chart (naive)
-  const dv = spec.content.dataViz;
-  if (dv) {
-    const a = spec.layout.anchors.find(x => x.refId === dv.id);
-    if (a) {
-      const rect = regions[a.region];
-      const chartData = dv.series.map(s => ({ name: s.name, labels: dv.labels, values: s.values }));
-      const type = dv.kind === "pie" ? pptx.ChartType.pie : dv.kind === "line" ? pptx.ChartType.line : pptx.ChartType.bar;
-      slide.addChart(type, chartData, { x: rect.x, y: rect.y, w: rect.w, h: rect.h, showLegend: true });
-    }
-  }
-}
-
-/**
- * Generate Full Presentation
- * Creates a complete multi-slide presentation with narrative flow
- */
-export const generatePresentation = onRequest(
-  { cors: ["*"], secrets: [AI_API_KEY, AI_BASE_URL, AI_MODEL] },
-  async (req, res) => {
-    return cors(req, res, async () => {
-      try {
-        if (req.method !== "POST") {
-          res.status(405).json({ error: "Method not allowed" });
-          return;
-        }
-
-        const body = req.body as PresentationRequest;
-
-        if (!body.topic) {
-          res.status(400).json({ error: "Missing required field: topic" });
-          return;
-        }
-
-        logger.info("Generating presentation", { topic: body.topic, audience: body.audience });
-
-        // Analyze request and generate structure
-        const structure = analyzePresentationRequest(body);
-
-        // Generate enhanced prompt for full presentation
-        const enhancedPrompt = generatePresentationPrompt(body);
-
-        // Call AI to generate all slides
-        const aiResponse = await callAIWithRetry(
-          enhancedPrompt,
-          AI_API_KEY.value(),
-          AI_BASE_URL.value(),
-          AI_MODEL.value() || "gpt-4",
-          z.any() // Accept any response format for multi-slide
-        );
-
-        // Parse AI response - expecting array of slide specs
-        let slideSpecs: any[];
-        try {
-          const parsed = JSON.parse(String(aiResponse));
-          slideSpecs = Array.isArray(parsed) ? parsed : [parsed];
-        } catch (parseError) {
-          logger.error("Failed to parse AI response", { error: String(parseError) });
-          res.status(500).json({ error: "Invalid AI response format" });
-          return;
-        }
-
-        // Validate and enhance each slide
-        const validatedSlides = slideSpecs.map(spec => {
-          try {
-            const validated = SlideSpecZ.parse(spec);
-            return enhanceSlideSpec(validated);
-          } catch (validationError) {
-            logger.warn("Slide validation failed, using fallback", { error: String(validationError) });
-            return spec; // Use as-is if validation fails
-          }
-        });
-
-        // Validate presentation flow
-        const flowValidation = validatePresentationFlow(validatedSlides);
-        if (!flowValidation.valid) {
-          logger.warn("Presentation flow issues detected", { issues: flowValidation.issues });
-        }
-
-        res.status(200).json({
-          presentation: {
-            title: body.topic,
-            slideCount: validatedSlides.length,
-            slides: validatedSlides,
-            structure: structure,
-            flowValidation: flowValidation
-          }
-        });
-
-      } catch (error) {
-        logger.error("Error generating presentation", { error: String(error) });
-        res.status(500).json({ error: "Failed to generate presentation" });
-      }
-    });
-  }
-);
-
-// Export performance and error handling utilities
-export * from "./performanceOptimizer";
-export * from "./errorHandler";
 
