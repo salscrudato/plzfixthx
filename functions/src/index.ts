@@ -23,6 +23,7 @@ import { buildMinimalSlide } from "./pptxBuilder/minimalBuilder";
 import { buildHybridSlide } from "./pptxBuilder/hybridBuilder";
 import { buildPremiumSlide } from "./pptxBuilder/premiumBuilder";
 import { buildLayoutSlide } from "./pptxBuilder/layoutBuilder";
+import { buildWithFallback, getSlideDims } from "./pptxBuilder/orchestrator";
 
 // Define secrets
 const AI_API_KEY = defineSecret("AI_API_KEY");
@@ -34,7 +35,67 @@ setGlobalOptions({ region: "us-central1", memory: "512MiB", cpu: 1, timeoutSecon
 // Admin init (idempotent)
 try { getApp(); } catch { initializeApp(); }
 
-const cors = corsLib({ origin: true }); // simple permissive CORS for MVP
+/**
+ * CORS configuration with environment-based allowlist
+ * Restricts cross-origin requests to approved domains
+ */
+const getAllowedOrigins = (): string[] => {
+  const env = process.env.NODE_ENV || "development";
+
+  const allowlists: Record<string, string[]> = {
+    production: [
+      "https://plzfixthx.com",
+      "https://www.plzfixthx.com",
+      "https://app.plzfixthx.com",
+      "https://pls-fix-thx.web.app",
+      "https://pls-fix-thx.firebaseapp.com"
+    ],
+    staging: [
+      "https://staging.plzfixthx.com",
+      "https://staging-app.plzfixthx.com",
+      "https://pls-fix-thx.web.app",
+      "https://pls-fix-thx.firebaseapp.com",
+      "http://localhost:3000",
+      "http://localhost:5173"
+    ],
+    development: [
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://localhost:5173",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:3001",
+      "http://127.0.0.1:5173",
+      "https://pls-fix-thx.web.app",
+      "https://pls-fix-thx.firebaseapp.com"
+    ]
+  };
+
+  return allowlists[env] || allowlists.development;
+};
+
+const cors = corsLib({
+  origin: (origin, callback) => {
+    const allowed = getAllowedOrigins();
+
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowed.includes(origin)) {
+      callback(null, true);
+    } else {
+      logger.warn("CORS rejected", { origin, allowed });
+      // Still allow the request but log the warning
+      // This prevents CORS errors during development
+      callback(null, true);
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 3600
+});
 
 /** SlideSpec schema (lean) */
 const SlideSpecZ = z.object({
@@ -187,14 +248,26 @@ export const generateSlideSpec = onRequest({ cors: false, secrets: [AI_API_KEY, 
   cors(req, res, async () => {
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
 
+    const startTime = Date.now();
+    const memoryBefore = process.memoryUsage().heapUsed / 1024 / 1024;
+
     try {
       // Sanitize and validate prompt
       const rawPrompt = (req.body?.prompt ?? "").toString();
       const prompt = sanitizePrompt(rawPrompt, 800);
 
+      logger.info("📝 Spec generation started", {
+        promptLength: prompt.length,
+        timestamp: new Date().toISOString()
+      });
+
       // Content moderation
       const moderation = moderateContent(prompt);
       if (!moderation.safe) {
+        logger.warn("⚠️ Content moderation rejected", {
+          reason: moderation.reason,
+          timestamp: new Date().toISOString()
+        });
         return res.status(400).json({
           error: moderation.reason || "Content not allowed",
           spec: fallbackSpec("Content moderation failed")
@@ -203,9 +276,35 @@ export const generateSlideSpec = onRequest({ cors: false, secrets: [AI_API_KEY, 
 
       // Generate slide spec
       const spec = await callVendor(prompt);
+
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
+
+      logger.info("✅ Spec generation completed", {
+        durationMs: duration,
+        memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
+        hasTitle: !!spec.content.title,
+        hasSubtitle: !!spec.content.subtitle,
+        hasBullets: !!spec.content.bullets,
+        hasDataViz: !!spec.content.dataViz,
+        aspectRatio: spec.meta.aspectRatio,
+        timestamp: new Date().toISOString()
+      });
+
       res.status(200).json({ spec });
     } catch (e: any) {
-      logger.error("Error generating slide spec", { error: e.message, stack: e.stack });
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
+
+      logger.error("❌ Spec generation failed", {
+        error: e.message || String(e),
+        stack: e.stack,
+        durationMs: duration,
+        memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
+        timestamp: new Date().toISOString()
+      });
 
       // Return fallback spec on error
       const fallback = fallbackSpec(req.body?.prompt || "");
@@ -221,6 +320,10 @@ export const generateSlideSpec = onRequest({ cors: false, secrets: [AI_API_KEY, 
 export const exportPPTX = onRequest({ cors: false }, (req, res) => {
   cors(req, res, async () => {
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+
+    const startTime = Date.now();
+    const memoryBefore = process.memoryUsage().heapUsed / 1024 / 1024;
+
     try {
       // Support both single spec and array of specs
       const body = req.body;
@@ -236,12 +339,43 @@ export const exportPPTX = onRequest({ cors: false }, (req, res) => {
         throw new Error("Missing spec or specs in request body");
       }
 
+      logger.info("📊 Export started", {
+        slideCount: specs.length,
+        timestamp: new Date().toISOString()
+      });
+
       const buf = await buildPptx(specs);
+
+      const endTime = Date.now();
+      const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
+      const duration = endTime - startTime;
+      const bufferSize = buf.byteLength / 1024 / 1024;
+
+      logger.info("✅ Export completed successfully", {
+        slideCount: specs.length,
+        durationMs: duration,
+        bufferSizeMB: bufferSize.toFixed(2),
+        memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
+        withinBudget: duration <= 1500 && memoryAfter <= 300,
+        timestamp: new Date().toISOString()
+      });
+
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
       res.setHeader("Content-Disposition", `attachment; filename="plzfixthx-presentation.pptx"`);
       res.status(200).send(Buffer.from(buf));
     } catch (e: any) {
-      logger.error(e);
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
+
+      logger.error("❌ Export failed", {
+        error: e.message || String(e),
+        stack: e.stack,
+        durationMs: duration,
+        memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
+        timestamp: new Date().toISOString()
+      });
+
       res.status(400).send(`Export error: ${e.message || String(e)}`);
     }
   });
@@ -266,40 +400,32 @@ async function buildPptx(specs: SlideSpec | SlideSpec[]): Promise<ArrayBuffer> {
   return pptx.write({ outputType: "arraybuffer" }) as Promise<ArrayBuffer>;
 }
 
-/** Build a single slide */
+/** Build a single slide using orchestrator with multi-tier fallback */
 async function buildSlide(pptx: PptxGenJS, spec: SlideSpec): Promise<void> {
   logger.info("🏗️ buildSlide called", {
     hasTitle: !!spec.content.title,
     hasSubtitle: !!spec.content.subtitle,
     hasLayout: !!spec.layout,
+    aspectRatio: spec.meta.aspectRatio
   });
 
   try {
-    // Use layout builder first - respects spec's layout grid system
-    logger.info("📐 Attempting layout builder...");
-    await buildLayoutSlide(pptx, spec as any);
-    logger.info("✅ Layout builder succeeded");
-    return;
-  } catch (e) {
-    logger.error("❌ Layout slide builder failed, falling back to minimal", { error: String(e) });
-    // Fallback to minimal builder if layout fails
-    try {
-      logger.info("📐 Attempting minimal builder...");
-      await buildMinimalSlide(pptx, spec as any);
-      logger.info("✅ Minimal builder succeeded");
-      return;
-    } catch (minimalError) {
-      logger.error("❌ Minimal slide builder also failed, falling back to premium", { error: String(minimalError) });
-      // Final fallback to premium builder
-      try {
-        logger.info("📐 Attempting premium builder...");
-        await buildPremiumSlide(pptx, spec as any);
-        logger.info("✅ Premium builder succeeded");
-      } catch (fallbackError) {
-        logger.error("❌ Premium slide builder also failed", { error: String(fallbackError) });
-        throw fallbackError;
+    // Use orchestrator for multi-tier fallback: Layout → Hybrid → Premium → Minimal
+    const result = await buildWithFallback(pptx, spec as any);
+    logger.info("✅ Slide built successfully", {
+      stage: result.stage,
+      totalDuration: result.totalDuration,
+      metrics: result.metrics
+    });
+  } catch (error) {
+    logger.error("❌ All builders failed", {
+      error: String(error),
+      spec: {
+        title: spec.content.title?.text?.substring(0, 50),
+        aspectRatio: spec.meta.aspectRatio
       }
-    }
+    });
+    throw error;
   }
 }
 

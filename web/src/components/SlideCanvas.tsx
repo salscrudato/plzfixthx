@@ -58,28 +58,31 @@ export function SlideCanvas({ spec }: { spec: SlideSpec }) {
     background: 'linear-gradient(135deg, #F8FAFC 0%, #F1F5F9 50%, #F8FAFC 100%)',
   };
 
-  // Responsive 16:9 surface - with proper aspect ratio and sizing
   return (
-    <div
-      className={`relative w-full overflow-hidden rounded-[var(--radius-lg)] transition-all duration-500 shadow-lg ${
-        isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-      }`}
-      style={{
-        aspectRatio: '16 / 9',
-        ...slideStyle,
-      }}
-    >
+    <div className="w-full">
+      {/* Slide Canvas */}
       <div
+        className={`relative w-full overflow-hidden rounded-[var(--radius-lg)] transition-all duration-500 shadow-lg ${
+          isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+        }`}
         style={{
-          width: '100%',
-          height: '100%',
-          padding: 'var(--space-5)',
-          boxSizing: 'border-box',
-          display: 'flex',
-          flexDirection: 'column',
+          aspectRatio: "16 / 9",
+          ...slideStyle,
         }}
       >
-        {renderRegions(spec, designTokens)}
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            padding: 'var(--space-5)',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+          }}
+        >
+          {renderRegions(spec, designTokens)}
+        </div>
       </div>
     </div>
   );
@@ -98,6 +101,7 @@ function renderRegions(spec: SlideSpec, designTokens: any) {
     height: "100%",
     width: "100%",
     boxSizing: "border-box",
+    position: "relative",
   };
 
   const regionToStyle = (r: any): React.CSSProperties => ({
@@ -332,4 +336,5 @@ function getGradientBackground(designTokens: any): string {
       return `linear-gradient(135deg, ${neutralLight} 0%, ${neutralMid}03 50%, ${neutralLight} 100%)`;
   }
 }
+
 

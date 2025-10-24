@@ -11,7 +11,9 @@ function baseUrl() {
     return "http://127.0.0.1:5001/pls-fix-thx/us-central1";
   }
 
-  return `https://${region}-${projectId}.cloudfunctions.net`;
+  // For Firebase Functions v2 (2nd Gen), use the direct function URLs
+  // These are Cloud Run URLs, not the old cloudfunctions.net format
+  return import.meta.env.VITE_FUNCTIONS_BASE_URL || `https://${region}-${projectId}.cloudfunctions.net`;
 }
 
 export async function apiGenerate(prompt: string) {

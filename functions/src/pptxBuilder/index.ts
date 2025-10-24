@@ -3,10 +3,11 @@
  * Exports all PPTX building utilities
  */
 
-export * from "./designTokenMapper";
+// Selective exports to avoid conflicts
 export * from "./patterns";
 export * from "./slideBuilder";
 export * from "./chartBuilder";
+export * from "./chartPresets";
 export * from "./premiumComponents";
 export * from "./shapeHelpers";
 export * from "./advancedShapes";
@@ -16,6 +17,40 @@ export * from "./enhancedAnimations";
 export * from "./whitespaceManager";
 export * from "./professionalTemplates";
 export * from "./designAccents";
+export * from "./performanceCache";
+export * from "./professionalDesignSystem";
+export * from "./enhancedPremiumBuilder";
+
+// Selective exports from modules with potential conflicts
+export {
+  mapColorPalette,
+  mapTypography,
+  mapShadows,
+  mapSpacing,
+  mapRadii,
+  getCompleteTokenMap,
+  validateDesignTokens
+} from "./designTokenMapper";
+
+export {
+  getSlideDims,
+  buildWithFallback,
+  type SlideDimensions,
+  type BuildResult,
+  type StageMetrics
+} from "./orchestrator";
+
+export {
+  getSlideDimsFromSpec,
+  calculateGridDimensions,
+  calculateRegionBounds,
+  calculateAllRegionBounds,
+  fitText,
+  calculateTextHeight,
+  ensureContrast,
+  validateBulletCount,
+  validateDataVizSeries
+} from "./dimensionHelpers";
 
 // Re-export commonly used functions
 export {
@@ -45,16 +80,6 @@ export {
   addProcessFlow,
   addMetricCard,
 } from "./shapeHelpers";
-
-export {
-  mapColorPalette,
-  mapTypography,
-  mapShadows,
-  mapSpacing,
-  mapRadii,
-  getCompleteTokenMap,
-  validateDesignTokens
-} from "./designTokenMapper";
 
 // Advanced shapes
 export {

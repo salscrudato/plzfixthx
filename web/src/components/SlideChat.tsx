@@ -221,7 +221,7 @@ Keep responses concise, friendly, and natural. Never say "I need more informatio
           </div>
           {messages.length === 0 && (
             <p className="text-center text-sm text-[var(--neutral-4)] mt-3">
-              Try: "Q4 Revenue Growth with key metrics" or "Product roadmap for 2025"
+              Try: "How to cook a noodle extra al dente" or "The origin of the name Salvatore"
             </p>
           )}
         </form>

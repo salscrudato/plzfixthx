@@ -1,7 +1,7 @@
 /**
  * Hybrid Slide Builder
  * Combines SVG backgrounds with PptxGenJS editable content
- * 
+ *
  * This approach gives us:
  * - Professional, Apple/Tesla-quality visual design (SVG)
  * - Editable, accessible content (PptxGenJS)
@@ -12,9 +12,7 @@
 import PptxGenJS from "pptxgenjs";
 import { SlideSpecV1 } from "../types/SlideSpecV1";
 import { generateBackgroundForSlide, svgToPngDataUrl } from "../svgGenerator";
-
-const SLIDE_WIDTH = 10; // inches
-const SLIDE_HEIGHT = 5.625; // inches (16:9 aspect ratio)
+import { getSlideDimsFromSpec, ensureContrast } from "./dimensionHelpers";
 
 /**
  * Build slide using hybrid approach
@@ -49,6 +47,7 @@ async function addEditableContent(slide: any, spec: SlideSpecV1): Promise<void> 
   const tokens = spec.styleTokens;
   const palette = tokens?.palette;
   const typography = tokens?.typography;
+  const dims = getSlideDimsFromSpec(spec);
 
   // Colors - enhanced contrast
   const textColor = palette?.neutral?.[0] || "#0F172A";
@@ -61,27 +60,36 @@ async function addEditableContent(slide: any, spec: SlideSpecV1): Promise<void> 
   const subtitleSize = typography?.sizes?.step_1 || 20;
   const bodySize = typography?.sizes?.step_0 || 18;
 
-  let currentY = 0.7; // Start position - slightly higher
+  // Ensure contrast compliance
+  const titleContrast = ensureContrast(textColor, "#FFFFFF");
+  const titleColor = titleContrast.compliant ? textColor : "#000000";
+
+  const subtitleContrast = ensureContrast(subtitleColor, "#FFFFFF");
+  const subColor = subtitleContrast.compliant ? subtitleColor : "#666666";
+
+  const padding = 0.7;
+  const contentWidth = dims.wIn - (padding * 2);
+  let currentY = padding;
 
   // Add Title with enhanced styling
   if (spec.content.title) {
     slide.addText(spec.content.title.text, {
-      x: 0.7,
+      x: padding,
       y: currentY,
-      w: SLIDE_WIDTH - 1.4,
+      w: contentWidth,
       h: 1.0,
       fontSize: titleSize,
       bold: true,
-      color: textColor.replace("#", ""),
+      color: titleColor.replace("#", ""),
       fontFace: typography?.fonts?.sans || "Aptos",
       align: "left",
       valign: "top",
-      lineSpacing: 110, // Slightly tighter line spacing for titles
+      lineSpacing: 110,
     });
 
     // Add subtle accent line under title
     slide.addShape("rect", {
-      x: 0.7,
+      x: padding,
       y: currentY + 0.85,
       w: 2.5,
       h: 0.04,
@@ -95,9 +103,9 @@ async function addEditableContent(slide: any, spec: SlideSpecV1): Promise<void> 
   // Add Subtitle with refined styling
   if (spec.content.subtitle) {
     slide.addText(spec.content.subtitle.text, {
-      x: 0.7,
+      x: padding,
       y: currentY,
-      w: SLIDE_WIDTH - 1.4,
+      w: contentWidth,
       h: 0.6,
       fontSize: subtitleSize,
       color: subtitleColor.replace("#", ""),
@@ -118,7 +126,7 @@ async function addEditableContent(slide: any, spec: SlideSpecV1): Promise<void> 
     bodySize,
     palette,
     fontFace: typography?.fonts?.sans || "Aptos",
-  });
+  }, dims);
 }
 
 /**
@@ -128,7 +136,8 @@ async function addContent(
   slide: any,
   content: SlideSpecV1["content"],
   startY: number,
-  colors: any
+  colors: any,
+  dims: any
 ): Promise<void> {
   if (!content) return;
 
@@ -161,8 +170,8 @@ async function addContent(
     slide.addText(allBulletItems, {
       x: 0.9,
       y: currentY,
-      w: SLIDE_WIDTH - 1.8,
-      h: SLIDE_HEIGHT - currentY - 0.6,
+      w: dims.wIn - 1.8,
+      h: dims.hIn - currentY - 0.6,
       fontSize: colors.bodySize,
       color: colors.textColor.replace("#", ""),
       fontFace: colors.fontFace,
@@ -173,7 +182,7 @@ async function addContent(
 
   // Data Visualization (chart)
   if (content.dataViz) {
-    await addDataViz(slide, content.dataViz, currentY, colors);
+    await addDataViz(slide, content.dataViz, currentY, colors, dims);
   }
 
   // Callouts - Enhanced with better visual design
@@ -196,7 +205,7 @@ async function addContent(
       slide.addShape("roundRect", {
         x: 0.9,
         y,
-        w: SLIDE_WIDTH - 1.8,
+        w: dims.wIn - 1.8,
         h: 0.7,
         fill: { color: bgColor.replace("#", "") },
         line: {
@@ -220,7 +229,7 @@ async function addContent(
       slide.addText(displayText, {
         x: 1.1,
         y: y + 0.1,
-        w: SLIDE_WIDTH - 2.2,
+        w: dims.wIn - 2.2,
         h: 0.5,
         fontSize: colors.bodySize - 1,
         color: colors.textColor.replace("#", ""),
@@ -236,12 +245,14 @@ async function addContent(
 /**
  * Add data visualization (chart) to slide with enhanced styling
  */
-async function addDataViz(slide: any, dataViz: any, startY: number, colors: any): Promise<void> {
+async function addDataViz(slide: any, dataViz: any, startY: number, colors: any, dims?: any): Promise<void> {
   if (!dataViz || !dataViz.labels || dataViz.labels.length === 0) return;
 
   const chartKind = dataViz.kind || "bar";
-  const chartWidth = SLIDE_WIDTH - 1.8;
-  const chartHeight = SLIDE_HEIGHT - startY - 0.6;
+  const slideWidth = dims?.wIn || 10;
+  const slideHeight = dims?.hIn || 5.625;
+  const chartWidth = slideWidth - 1.8;
+  const chartHeight = slideHeight - startY - 0.6;
 
   try {
     // Prepare chart data for PptxGenJS

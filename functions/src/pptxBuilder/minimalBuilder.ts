@@ -13,6 +13,13 @@ import {
   addPremiumDivider,
   addCornerAccent
 } from "./premiumComponents";
+import {
+  getSlideDimsFromSpec,
+  ensureContrast,
+  validateBulletCount,
+  calculateTextHeight
+} from "./dimensionHelpers";
+import { generateBackgroundForSlide, svgToPngDataUrl } from "../svgGenerator";
 
 /**
  * Build a professional slide with beautiful design elements
@@ -23,47 +30,76 @@ export async function buildMinimalSlide(
 ): Promise<void> {
   const slide = pptx.addSlide();
 
-  // Apply subtle gradient background for modern, professional look
-  applyGradientBackground(slide, spec);
+  // Get slide dimensions
+  const dims = getSlideDimsFromSpec(spec);
+  const padding = 0.5;
+  const contentWidth = dims.wIn - (padding * 2);
+
+  // Apply subtle gradient background for modern, professional look (with SVG or fallback)
+  await applyGradientBackground(slide, spec);
 
   // Add professional design accents
   addProfessionalAccents(slide, spec);
 
+  // Get style tokens
+  const palette = spec.styleTokens.palette;
+  const typography = spec.styleTokens.typography;
+  const textColor = palette.neutral[0] || "#0F172A";
+  const subtitleColor = palette.neutral[2] || "#64748B";
+  const primaryColor = palette.primary || "#6366F1";
+
+  const titleSize = typography?.sizes?.step_3 || 32;
+  const subtitleSize = typography?.sizes?.step_1 || 18;
+
+  // Ensure contrast
+  const titleContrast = ensureContrast(textColor, "#FFFFFF");
+  const titleColor = titleContrast.compliant ? textColor : "#000000";
+
+  const subtitleContrast = ensureContrast(subtitleColor, "#FFFFFF");
+  const subColor = subtitleContrast.compliant ? subtitleColor : "#666666";
+
+  let currentY = 0.5;
+
   // Add title with enhanced styling
   const title = spec.content.title;
   if (title && title.text) {
+    const titleHeight = calculateTextHeight(title.text, contentWidth, titleSize);
+
     slide.addText(title.text, {
-      x: 0.5,
-      y: 0.5,
-      w: 9,
-      h: 0.6,
-      fontFace: "Aptos",
-      fontSize: 32,
+      x: padding,
+      y: currentY,
+      w: contentWidth,
+      h: titleHeight,
+      fontFace: typography?.fonts?.sans || "Aptos",
+      fontSize: titleSize,
       bold: true,
-      color: "0F172A",
+      color: titleColor.replace("#", ""),
       align: "left",
       valign: "top"
     });
 
     // Add subtle accent line under title
-    const primaryColor = spec.styleTokens.palette.primary.replace("#", "");
-    addPremiumDivider(slide, 0.5, 1.15, 2.5, primaryColor, 0.04);
+    addPremiumDivider(slide, padding, currentY + titleHeight + 0.1, 2.5, primaryColor.replace("#", ""), 0.04);
+    currentY += titleHeight + 0.25;
   }
 
   // Add subtitle with refined styling
   const subtitle = spec.content.subtitle;
   if (subtitle && subtitle.text) {
+    const subtitleHeight = calculateTextHeight(subtitle.text, contentWidth, subtitleSize);
+
     slide.addText(subtitle.text, {
-      x: 0.5,
-      y: 1.3,
-      w: 9,
-      h: 0.4,
-      fontFace: "Aptos",
-      fontSize: 18,
-      color: "64748B",
+      x: padding,
+      y: currentY,
+      w: contentWidth,
+      h: subtitleHeight,
+      fontFace: typography?.fonts?.sans || "Aptos",
+      fontSize: subtitleSize,
+      color: subColor.replace("#", ""),
       align: "left",
       valign: "top"
     });
+    currentY += subtitleHeight + 0.2;
   }
 
   // Add bullets with enhanced styling and subtle accents
@@ -167,54 +203,20 @@ function addProfessionalAccents(slide: any, spec: SlideSpecV1): void {
 /**
  * Apply subtle gradient background to slide
  * Creates a modern, professional look with minimal visual noise
+ * Uses SVG with fallback to solid color
  */
-function applyGradientBackground(slide: any, spec: SlideSpecV1): void {
-  // Get theme-based colors from spec
-  const primaryColor = spec.styleTokens.palette.primary || "#6366F1";
-  const neutralLight = spec.styleTokens.palette.neutral[6] || "#F8FAFC";
-  const neutralLighter = spec.styleTokens.palette.neutral[5] || "#F1F5F9";
-
-  // Create subtle gradient using overlapping rectangles with transparency
-  // This simulates a gradient effect in PowerPoint
-
-  // Base layer - lightest color
-  slide.background = { fill: neutralLight.replace("#", "") };
-
-  // Add subtle gradient overlay using semi-transparent shapes
-  // Top-left to bottom-right gradient effect
-  const gradientSteps = 5;
-  const slideWidth = 10;
-  const slideHeight = 7.5;
-
-  for (let i = 0; i < gradientSteps; i++) {
-    const transparency = 95 - (i * 2); // 95%, 93%, 91%, 89%, 87%
-    const yPos = (slideHeight / gradientSteps) * i;
-    const height = slideHeight / gradientSteps + 0.1; // Slight overlap
-
-    slide.addShape("rect", {
-      x: 0,
-      y: yPos,
-      w: slideWidth,
-      h: height,
-      fill: {
-        color: neutralLighter.replace("#", ""),
-        transparency: transparency
-      },
-      line: { type: "none" }
-    });
+async function applyGradientBackground(slide: any, spec: SlideSpecV1): Promise<void> {
+  try {
+    // Try to generate SVG background
+    const svgBackground = generateBackgroundForSlide(spec);
+    const backgroundDataUrl = await svgToPngDataUrl(svgBackground, 1920, 1080);
+    slide.background = { data: backgroundDataUrl };
+    logger.info("✅ SVG gradient background applied");
+  } catch (error) {
+    logger.warn("⚠️ SVG background failed, using solid color fallback", { error: String(error) });
+    // Fallback: solid color background
+    const neutralLight = spec.styleTokens.palette.neutral[6] || "#F8FAFC";
+    slide.background = { fill: neutralLight.replace("#", "") };
   }
-
-  // Add very subtle accent gradient on the right edge for depth
-  slide.addShape("rect", {
-    x: slideWidth - 0.5,
-    y: 0,
-    w: 0.5,
-    h: slideHeight,
-    fill: {
-      color: primaryColor.replace("#", ""),
-      transparency: 97 // Very subtle
-    },
-    line: { type: "none" }
-  });
 }
 

@@ -2,6 +2,11 @@ import * as logger from "firebase-functions/logger";
 import { fetch as undiciFetch } from "undici";
 import { z } from "zod";
 import { ENHANCED_SYSTEM_PROMPT } from "./prompts";
+import {
+  ensureContrast,
+  validateBulletCount,
+  validateDataVizSeries
+} from "./pptxBuilder/dimensionHelpers";
 
 /** Retry with exponential backoff */
 export async function retryWithBackoff<T>(
@@ -134,8 +139,53 @@ export function moderateContent(prompt: string): { safe: boolean; reason?: strin
   return { safe: true };
 }
 
+/**
+ * Split concatenated bullet points into separate items
+ * Detects patterns like "1776 Event1783 Event1789 Event" and splits them
+ */
+function splitConcatenatedBullets(bulletGroup: any): any {
+  if (!bulletGroup.items || bulletGroup.items.length === 0) {
+    return bulletGroup;
+  }
+
+  const newItems: any[] = [];
+
+  for (const item of bulletGroup.items) {
+    const text = item.text || "";
+
+    // Detect concatenated timeline events (year + event pattern)
+    // Pattern: 4-digit year followed by text, repeated
+    const yearEventPattern = /(\d{4}\s+[^0-9]+?)(?=\d{4}\s+|$)/g;
+    const matches = text.match(yearEventPattern);
+
+    if (matches && matches.length > 1) {
+      // Split concatenated events
+      logger.info("Splitting concatenated bullet points", { original: text, count: matches.length });
+      for (const match of matches) {
+        const trimmed = match.trim();
+        if (trimmed) {
+          newItems.push({
+            text: trimmed,
+            level: item.level || 1
+          });
+        }
+      }
+    } else {
+      // Keep as-is if not concatenated
+      newItems.push(item);
+    }
+  }
+
+  return {
+    ...bulletGroup,
+    items: newItems
+  };
+}
+
 /** Post-process and enhance AI-generated slide spec */
 export function enhanceSlideSpec(spec: any): any {
+  logger.info("🔍 Enhancing slide spec");
+
   // Ensure all required fields are present
   if (!spec.meta) {
     spec.meta = {
@@ -155,50 +205,105 @@ export function enhanceSlideSpec(spec: any): any {
     };
   }
 
-  // Limit bullet points to 6 total
+  // Ensure all content has IDs
+  if (spec.content?.title && !spec.content.title.id) {
+    spec.content.title.id = "title";
+  }
+  if (spec.content?.subtitle && !spec.content.subtitle.id) {
+    spec.content.subtitle.id = "subtitle";
+  }
   if (spec.content?.bullets) {
-    spec.content.bullets.forEach((bulletGroup: any) => {
-      if (bulletGroup.items && bulletGroup.items.length > 6) {
-        bulletGroup.items = bulletGroup.items.slice(0, 6);
-      }
+    spec.content.bullets.forEach((b: any, i: number) => {
+      if (!b.id) b.id = `bullets_${i}`;
     });
   }
+  if (spec.content?.callouts) {
+    spec.content.callouts.forEach((c: any, i: number) => {
+      if (!c.id) c.id = `callout_${i}`;
+    });
+  }
+  if (spec.content?.dataViz && !spec.content.dataViz.id) {
+    spec.content.dataViz.id = "dataviz";
+  }
 
-  // Validate chart data if present
-  if (spec.content?.dataViz) {
-    const viz = spec.content.dataViz;
-    if (viz.labels && viz.series) {
-      const labelCount = viz.labels.length;
-      // Ensure all series have matching value counts
-      viz.series.forEach((s: any) => {
-        if (s.values.length !== labelCount) {
-          // Pad or trim to match
-          if (s.values.length < labelCount) {
-            s.values = [...s.values, ...Array(labelCount - s.values.length).fill(0)];
-          } else {
-            s.values = s.values.slice(0, labelCount);
-          }
+  // Split concatenated bullet points (e.g., timeline events)
+  if (spec.content?.bullets) {
+    spec.content.bullets = spec.content.bullets.map((bulletGroup: any) =>
+      splitConcatenatedBullets(bulletGroup)
+    );
+  }
+
+  // Validate and fix bullet points (max 6 total)
+  if (spec.content?.bullets) {
+    const bulletValidation = validateBulletCount(spec.content.bullets, 6);
+    if (!bulletValidation.valid) {
+      logger.warn("⚠️ Bullet count exceeds limit", bulletValidation);
+      spec.content.bullets.forEach((bulletGroup: any) => {
+        if (bulletGroup.items && bulletGroup.items.length > 6) {
+          bulletGroup.items = bulletGroup.items.slice(0, 6);
         }
       });
     }
   }
 
-  // Ensure color palette is valid
-  if (spec.styleTokens?.palette) {
-    const palette = spec.styleTokens.palette;
-    // Validate hex colors
-    const hexPattern = /^#[0-9A-Fa-f]{6}$/;
-    if (palette.primary && !hexPattern.test(palette.primary)) {
-      palette.primary = "#6366F1"; // Default primary
-    }
-    if (palette.accent && !hexPattern.test(palette.accent)) {
-      palette.accent = "#EC4899"; // Default accent
+  // Validate and fix chart data
+  if (spec.content?.dataViz) {
+    const vizValidation = validateDataVizSeries(spec.content.dataViz);
+    if (!vizValidation.valid) {
+      logger.warn("⚠️ DataViz validation failed", vizValidation);
+      const viz = spec.content.dataViz;
+      if (viz.labels && viz.series) {
+        const labelCount = viz.labels.length;
+        viz.series.forEach((s: any) => {
+          if (s.values.length !== labelCount) {
+            if (s.values.length < labelCount) {
+              s.values = [...s.values, ...Array(labelCount - s.values.length).fill(0)];
+            } else {
+              s.values = s.values.slice(0, labelCount);
+            }
+          }
+        });
+      }
     }
   }
 
-  // FIX LAYOUT ISSUES
+  // Ensure color palette is valid and WCAG compliant
+  if (spec.styleTokens?.palette) {
+    const palette = spec.styleTokens.palette;
+    const hexPattern = /^#[0-9A-Fa-f]{6}$/;
+
+    if (palette.primary && !hexPattern.test(palette.primary)) {
+      palette.primary = "#6366F1";
+    }
+    if (palette.accent && !hexPattern.test(palette.accent)) {
+      palette.accent = "#EC4899";
+    }
+
+    // Ensure neutral palette
+    if (!palette.neutral || palette.neutral.length < 5) {
+      palette.neutral = [
+        "#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8",
+        "#CBD5E1", "#E2E8F0", "#F1F5F9", "#F8FAFC"
+      ];
+    }
+
+    // Validate contrast
+    const textColor = palette.neutral[0] || "#0F172A";
+    const bgColor = palette.neutral[8] || "#F8FAFC";
+    const contrast = ensureContrast(textColor, bgColor, 4.5);
+
+    if (!contrast.compliant) {
+      logger.warn("⚠️ Contrast ratio below WCAG AA", { ratio: contrast.ratio.toFixed(2) });
+      // Adjust to ensure compliance
+      palette.neutral[0] = "#000000"; // Use pure black for text
+      palette.neutral[8] = "#FFFFFF"; // Use pure white for background
+    }
+  }
+
+  // Fix layout issues
   spec = fixLayoutIssues(spec);
 
+  logger.info("✅ Spec enhancement complete");
   return spec;
 }
 

@@ -7,11 +7,12 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { validateEnv } from "./lib/env";
 import { logger } from "./lib/logger";
 import { registerServiceWorker } from "./lib/registerSW";
+import { initVersionCheck, APP_VERSION } from "./lib/versionCheck";
 
 // Validate environment variables at startup
 try {
   validateEnv();
-  logger.info("Application starting...");
+  logger.info("Application starting...", { version: APP_VERSION });
 } catch (error) {
   logger.error("Failed to validate environment", error);
   throw error;
@@ -19,6 +20,7 @@ try {
 
 initAnalytics();
 registerServiceWorker();
+initVersionCheck();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

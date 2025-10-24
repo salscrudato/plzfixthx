@@ -7,16 +7,18 @@
 import PptxGenJS from "pptxgenjs";
 import type { SlideSpecV1 } from "../types/SlideSpecV1";
 import { logger } from "firebase-functions/v2";
-
-const SLIDE_WIDTH = 10; // inches
-const SLIDE_HEIGHT = 7.5; // inches
-
-/**
- * Convert pixels to inches
- */
-function pxToIn(px: number): number {
-  return (px * 0.75) / 72;
-}
+import {
+  getSlideDimsFromSpec,
+  calculateGridDimensions,
+  calculateAllRegionBounds,
+  pxToIn,
+  fitText,
+  calculateTextHeight,
+  ensureContrast,
+  validateBulletCount,
+  validateDataVizSeries
+} from "./dimensionHelpers";
+import { generateBackgroundForSlide, svgToPngDataUrl } from "../svgGenerator";
 
 /**
  * Build slide using layout grid system
@@ -32,34 +34,16 @@ export async function buildLayoutSlide(
       hasTitle: !!spec.content.title,
       hasSubtitle: !!spec.content.subtitle,
       anchorsCount: spec.layout.anchors.length,
+      aspectRatio: spec.meta.aspectRatio
     });
 
-    // Apply background
-    applyBackground(slide, spec);
+    // Apply background (with SVG or fallback)
+    await applyBackground(slide, spec);
 
-    // Calculate grid dimensions
-    const { rows, cols, gutter, margin } = spec.layout.grid;
-    const marginTop = pxToIn(margin.t);
-    const marginRight = pxToIn(margin.r);
-    const marginBottom = pxToIn(margin.b);
-    const marginLeft = pxToIn(margin.l);
-    const gutterIn = pxToIn(gutter);
-
-    const gridWidth = SLIDE_WIDTH - marginLeft - marginRight;
-    const gridHeight = SLIDE_HEIGHT - marginTop - marginBottom;
-    const cellWidth = (gridWidth - (cols - 1) * gutterIn) / cols;
-    const cellHeight = (gridHeight - (rows - 1) * gutterIn) / rows;
-
-    // Create region map
-    const regions: Record<string, any> = {};
-    spec.layout.regions.forEach((region) => {
-      const x = marginLeft + (region.colStart - 1) * (cellWidth + gutterIn);
-      const y = marginTop + (region.rowStart - 1) * (cellHeight + gutterIn);
-      const w = region.colSpan * cellWidth + (region.colSpan - 1) * gutterIn;
-      const h = region.rowSpan * cellHeight + (region.rowSpan - 1) * gutterIn;
-
-      regions[region.name] = { x, y, w, h };
-    });
+    // Get slide dimensions and calculate grid
+    const slideDims = getSlideDimsFromSpec(spec);
+    const gridCalc = calculateGridDimensions(spec, slideDims);
+    const regions = calculateAllRegionBounds(spec, gridCalc);
 
     // Get style tokens
     const palette = spec.styleTokens.palette;
@@ -96,63 +80,69 @@ export async function buildLayoutSlide(
       anchors.forEach((anchor) => {
         // Title
         if (anchor.refId === spec.content.title?.id) {
-          // Calculate title height based on text length and width
           const titleText = spec.content.title.text;
-          const estimatedLines = Math.ceil(titleText.length / 40); // Rough estimate
-          const titleHeight = Math.max(0.6, estimatedLines * (titleSize / 72) * 1.5); // Convert to inches
+          const titleHeight = calculateTextHeight(titleText, region.w, titleSize);
+
+          // Ensure contrast
+          const contrast = ensureContrast(primaryColor, "#FFFFFF");
+          const titleColor = contrast.compliant ? primaryColor : "#000000";
 
           logger.info("📝 Rendering title", {
             text: titleText.substring(0, 50),
             y: currentY,
             height: titleHeight,
             fontSize: titleSize,
-            estimatedLines,
+            contrast: contrast.ratio.toFixed(2)
           });
-          slide.addText(spec.content.title.text, {
+
+          slide.addText(titleText, {
             x: region.x,
             y: currentY,
             w: region.w,
             h: titleHeight,
             fontSize: titleSize,
             bold: true,
-            color: primaryColor.replace("#", ""),
-            fontFace: "Aptos",
+            color: titleColor.replace("#", ""),
+            fontFace: typography?.fonts?.sans || "Aptos",
             align: "left",
             valign: "top",
             wrap: true,
           });
-          currentY += titleHeight + 0.15; // Add gap between title and subtitle
+          currentY += titleHeight + 0.15;
           usedHeight += titleHeight + 0.15;
           return;
         }
 
         // Subtitle
         if (anchor.refId === spec.content.subtitle?.id && spec.content.subtitle) {
-          // Calculate subtitle height based on text length and width
           const subtitleText = spec.content.subtitle.text;
-          const estimatedLines = Math.ceil(subtitleText.length / 50); // Rough estimate
-          const subtitleHeight = Math.max(0.4, estimatedLines * (subtitleSize / 72) * 1.5); // Convert to inches
+          const subtitleHeight = calculateTextHeight(subtitleText, region.w, subtitleSize);
+
+          // Ensure contrast
+          const contrast = ensureContrast(subtitleColor, "#FFFFFF");
+          const subColor = contrast.compliant ? subtitleColor : "#666666";
 
           logger.info("📝 Rendering subtitle", {
             text: subtitleText.substring(0, 50),
             y: currentY,
             height: subtitleHeight,
             fontSize: subtitleSize,
-            estimatedLines,
+            contrast: contrast.ratio.toFixed(2)
           });
-          slide.addText(spec.content.subtitle.text, {
+
+          slide.addText(subtitleText, {
             x: region.x,
             y: currentY,
             w: region.w,
             h: subtitleHeight,
             fontSize: subtitleSize,
-            color: subtitleColor.replace("#", ""),
-            fontFace: "Aptos",
+            color: subColor.replace("#", ""),
+            fontFace: typography?.fonts?.sans || "Aptos",
             align: "left",
             valign: "top",
             wrap: true,
           });
-          currentY += subtitleHeight + 0.15; // Add gap
+          currentY += subtitleHeight + 0.15;
           usedHeight += subtitleHeight + 0.15;
           return;
         }
@@ -237,12 +227,21 @@ export async function buildLayoutSlide(
 }
 
 /**
- * Apply background with subtle gradient
+ * Apply background with SVG or fallback to solid color
  */
-function applyBackground(slide: any, spec: SlideSpecV1): void {
-  const palette = spec.styleTokens.palette;
-  const neutralLight = palette.neutral[8] || "#F8FAFC";
-
-  slide.background = { fill: neutralLight.replace("#", "") };
+async function applyBackground(slide: any, spec: SlideSpecV1): Promise<void> {
+  try {
+    // Try to generate SVG background
+    const svgBackground = generateBackgroundForSlide(spec);
+    const backgroundDataUrl = await svgToPngDataUrl(svgBackground, 1920, 1080);
+    slide.background = { data: backgroundDataUrl };
+    logger.info("✅ SVG background applied");
+  } catch (error) {
+    logger.warn("⚠️ SVG background failed, using solid color fallback", { error: String(error) });
+    // Fallback to solid color
+    const palette = spec.styleTokens.palette;
+    const neutralLight = palette.neutral[8] || "#F8FAFC";
+    slide.background = { fill: neutralLight.replace("#", "") };
+  }
 }
 
