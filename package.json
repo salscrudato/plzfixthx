@@ -1,0 +1,31 @@
+{
+  "name": "plzfixthx",
+  "version": "1.0.0",
+  "description": "Professional PowerPoint slide generation with AI",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && npm install --prefix functions && npm install --prefix web",
+    "build": "npm run build --prefix functions && npm run build --prefix web",
+    "build:functions": "npm run build --prefix functions",
+    "build:web": "npm run build --prefix web",
+    "dev": "npm run dev --prefix web",
+    "dev:functions": "npm run serve --prefix functions",
+    "lint": "npm run lint --prefix functions && npm run lint --prefix web",
+    "test": "npm run test --prefix functions && npm run test --prefix web",
+    "test:functions": "npm run test --prefix functions",
+    "test:web": "npm run test --prefix web",
+    "deploy": "npm run build && firebase deploy",
+    "deploy:functions": "npm run deploy --prefix functions",
+    "deploy:web": "npm run build:web && firebase deploy --only hosting",
+    "deploy:all": "npm run build && firebase deploy"
+  },
+  "keywords": [
+    "powerpoint",
+    "slides",
+    "ai",
+    "generation"
+  ],
+  "author": "salscrudato",
+  "license": "MIT"
+}
+
