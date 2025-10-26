@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type { SlideSpecV1 } from "@/types/SlideSpecV1";
 import {
   ResponsiveContainer,
@@ -20,76 +20,105 @@ import {
   Legend,
 } from "recharts";
 
+/* -------------------------------------------------------------------------- */
+/*                                   Tokens                                   */
+/* -------------------------------------------------------------------------- */
+
 type Tokens = {
   palette: { primary: string; accent: string; neutral: string[] };
   typography: SlideSpecV1["styleTokens"]["typography"];
   pattern: NonNullable<SlideSpecV1["design"]>["pattern"] | "split";
 };
 
-export function SlideCanvas({ spec }: { spec: SlideSpecV1 }) {
-  const [isVisible, setIsVisible] = useState(false);
+const DEFAULT_NEUTRAL = [
+  "#0F172A",
+  "#1E293B",
+  "#334155",
+  "#475569",
+  "#64748B",
+  "#94A3B8",
+  "#CBD5E1",
+  "#E2E8F0",
+  "#F8FAFC",
+];
 
-  useEffect(() => {
-    setIsVisible(false);
-    const t = setTimeout(() => setIsVisible(true), 50);
-    return () => clearTimeout(t);
-  }, [spec]);
+const HEX6 = /^#[0-9A-Fa-f]{6}$/;
 
-  const tokens: Tokens = useMemo(() => {
-    const p = spec.styleTokens?.palette ?? {
-      primary: "#6366F1",
-      accent: "#EC4899",
-      neutral: [
-        "#0F172A",
-        "#1E293B",
-        "#334155",
-        "#475569",
-        "#64748B",
-        "#94A3B8",
-        "#CBD5E1",
-        "#E2E8F0",
-        "#F8FAFC",
-      ],
-    };
-    const t = spec.styleTokens?.typography ?? {
+/** Ensure primary, accent, and a 9‑step neutral ramp are always present/valid */
+function normalizePalette(p?: SlideSpecV1["styleTokens"]["palette"]): Tokens["palette"] {
+  const primary = p?.primary && HEX6.test(p.primary) ? p.primary : "#6366F1";
+  const accent = p?.accent && HEX6.test(p.accent) ? p.accent : "#EC4899";
+
+  let neutral = Array.isArray(p?.neutral) ? p!.neutral.filter((c): c is string => !!c && HEX6.test(c)) : [];
+  if (neutral.length < 9) neutral = DEFAULT_NEUTRAL;
+
+  return { primary, accent, neutral: neutral.slice(0, 9) };
+}
+
+function normalizeTypography(t?: SlideSpecV1["styleTokens"]["typography"]): Tokens["typography"] {
+  return (
+    t ?? {
       fonts: { sans: "Inter, Arial, sans-serif" },
       sizes: { "step_-2": 12, "step_-1": 14, step_0: 16, step_1: 20, step_2: 24, step_3: 40 },
       weights: { regular: 400, medium: 500, semibold: 600, bold: 700 },
       lineHeights: { compact: 1.2, standard: 1.5 },
-    };
+    }
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*                              Main Slide Canvas                              */
+/* -------------------------------------------------------------------------- */
+
+export const SlideCanvas = memo(function SlideCanvas({ spec }: { spec: SlideSpecV1 }) {
+  const [isVisible, setIsVisible] = useState(false);
+
+  // soft enter animation on spec change
+  useEffect(() => {
+    setIsVisible(false);
+    const t = setTimeout(() => setIsVisible(true), 40);
+    return () => clearTimeout(t);
+  }, [spec]);
+
+  const tokens: Tokens = useMemo(() => {
+    const palette = normalizePalette(spec.styleTokens?.palette);
+    const typography = normalizeTypography(spec.styleTokens?.typography);
     const pattern = spec.design?.pattern ?? "split";
-    return { palette: p, typography: t, pattern };
+    return { palette, typography, pattern };
   }, [spec]);
 
   const aspect = spec.meta.aspectRatio === "4:3" ? "4 / 3" : "16 / 9";
-
-  const slideStyle: React.CSSProperties = {
-    background: getGradientBackground(tokens),
-    color: tokens.palette.neutral[0],
-  };
+  const slideStyle: React.CSSProperties = useMemo(
+    () => ({
+      background: getGradientBackground(tokens),
+      color: tokens.palette.neutral[0],
+    }),
+    [tokens]
+  );
 
   return (
     <div className="w-full">
       <div
-        className={`relative w-full overflow-hidden rounded-2xl transition-all duration-700 shadow-2xl border border-white/10 ${
+        className={`relative w-full overflow-hidden rounded-2xl transition-all duration-500 shadow-2xl border border-white/10 ${
           isVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"
         }`}
         style={{ aspectRatio: aspect, ...slideStyle }}
+        aria-label="Slide preview"
       >
-        {/* Left accent bar to mirror PPTX - professional visual anchor with enhanced shadow */}
+        {/* Left accent bar */}
         <div
           aria-hidden
           style={{
             position: "absolute",
+            insetInlineStart: 0,
             top: 0,
-            left: 0,
             width: "0.12in",
             height: "100%",
             background: tokens.palette.primary,
             boxShadow: "3px 0 12px rgba(0,0,0,0.15)",
           }}
         />
-        {/* Subtle top-right accent glaze - 10% opacity for premium feel */}
+        {/* Top-right glaze */}
         <div
           aria-hidden
           style={{
@@ -102,7 +131,7 @@ export function SlideCanvas({ spec }: { spec: SlideSpecV1 }) {
             borderRadius: 12,
           }}
         />
-        {/* Subtle bottom accent for visual balance */}
+        {/* Bottom accent block */}
         <div
           aria-hidden
           style={{
@@ -115,7 +144,7 @@ export function SlideCanvas({ spec }: { spec: SlideSpecV1 }) {
             borderRadius: 8,
           }}
         />
-        {/* Premium accent line for sophistication */}
+        {/* Slim vertical accent line */}
         <div
           aria-hidden
           style={{
@@ -143,7 +172,7 @@ export function SlideCanvas({ spec }: { spec: SlideSpecV1 }) {
       </div>
     </div>
   );
-}
+});
 
 /* -------------------------------------------------------------------------- */
 /*                                   Layout                                   */
@@ -200,7 +229,7 @@ function renderRegions(spec: SlideSpecV1, tokens: Tokens) {
 /*                                  Elements                                  */
 /* -------------------------------------------------------------------------- */
 
-function ElementByRef({
+const ElementByRef = memo(function ElementByRef({
   spec,
   refId,
   tokens,
@@ -214,7 +243,6 @@ function ElementByRef({
   if (c.title?.id === refId) {
     return <Title text={c.title.text} tokens={tokens} align={spec.components?.title?.align} />;
   }
-
   if (c.subtitle?.id === refId) {
     return <Subtitle text={c.subtitle.text} tokens={tokens} />;
   }
@@ -244,11 +272,11 @@ function ElementByRef({
   }
 
   return null;
-}
+});
 
 /* ------------------------------- Typography -------------------------------- */
 
-function Title({
+const Title = memo(function Title({
   text,
   tokens,
   align,
@@ -292,9 +320,9 @@ function Title({
       />
     </h2>
   );
-}
+});
 
-function Subtitle({ text, tokens }: { text: string; tokens: Tokens }) {
+const Subtitle = memo(function Subtitle({ text, tokens }: { text: string; tokens: Tokens }) {
   const s = tokens.typography.sizes;
   const w = tokens.typography.weights;
   const lh = tokens.typography.lineHeights;
@@ -314,9 +342,9 @@ function Subtitle({ text, tokens }: { text: string; tokens: Tokens }) {
       {text}
     </p>
   );
-}
+});
 
-function Bullets({
+const Bullets = memo(function Bullets({
   items,
   tokens,
   variant,
@@ -332,6 +360,7 @@ function Bullets({
 
   return (
     <ul
+      role="list"
       style={{
         fontFamily: tokens.typography.fonts.sans,
         fontSize: `${s.step_0 ?? 16}px`,
@@ -345,13 +374,14 @@ function Bullets({
     >
       {items.map((it, i) => {
         const isLevel1 = it.level === 1;
-        const fontSize = isLevel1 ? 16 : (it.level === 2 ? 14 : 12);
+        const fontSize = isLevel1 ? 16 : it.level === 2 ? 14 : 12;
         const fontWeight = isLevel1 ? (w.semibold ?? 600) : (w.regular ?? 400);
-        const color = isLevel1 ? tokens.palette.primary : (tokens.palette.neutral[2] ?? "#334155");
+        const color = isLevel1 ? tokens.palette.primary : tokens.palette.neutral[2] ?? "#334155";
 
         return (
           <li
             key={i}
+            role="listitem"
             style={{
               marginLeft: `${(it.level - 1) * 24}px`,
               marginBottom: `${gap}px`,
@@ -381,9 +411,9 @@ function Bullets({
       })}
     </ul>
   );
-}
+});
 
-function Callout({
+const Callout = memo(function Callout({
   item,
   tokens,
   variantCard,
@@ -397,51 +427,42 @@ function Callout({
     danger: { bg: "#FEE2E2", border: "#EF4444", text: "#7F1D1D" },
     success: { bg: "#D1FAE5", border: "#10B981", text: "#065F46" },
     note: { bg: "#F3F4F6", border: tokens.palette.accent, text: "#1F2937" },
-  };
+  } as const;
 
-  const variant = variants[item.variant] || variants.note;
+  const v = variants[item.variant] || variants.note;
 
   return (
     <div
       style={{
         padding: "16px 18px",
         borderRadius: 12,
-        border: `2px solid ${variant.border}`,
-        backgroundColor: variant.bg,
-        color: variant.text,
-        boxShadow:
-          variantCard === "elevated"
-            ? "0 8px 24px rgba(0,0,0,0.12)"
-            : "0 2px 8px rgba(0,0,0,0.06)",
+        border: `2px solid ${v.border}`,
+        backgroundColor: v.bg,
+        color: v.text,
+        boxShadow: variantCard === "elevated" ? "0 8px 24px rgba(0,0,0,0.12)" : "0 2px 8px rgba(0,0,0,0.06)",
         fontSize: 14,
         lineHeight: 1.6,
-        borderLeft: `4px solid ${variant.border}`,
+        borderLeft: `4px solid ${v.border}`,
         position: "relative",
       }}
     >
       {item.title && (
-        <b style={{ display: "block", marginBottom: "4px", fontSize: "15px" }}>
-          {item.title}
-        </b>
+        <b style={{ display: "block", marginBottom: "4px", fontSize: "15px" }}>{item.title}</b>
       )}
       {item.text}
     </div>
   );
-}
+});
 
 /* --------------------------------- Charts ---------------------------------- */
 
-function Chart({ spec, tokens }: { spec: SlideSpecV1; tokens: Tokens }) {
+const Chart = memo(function Chart({ spec, tokens }: { spec: SlideSpecV1; tokens: Tokens }) {
   const viz = spec.content.dataViz!;
   const series = viz.series ?? [];
   const labels = viz.labels ?? [];
 
-  // Normalize to shortest length across series
-  const minLen = Math.max(
-    0,
-    Math.min(labels.length, ...series.map((s) => s.values.length))
-  );
-
+  // Normalize to shortest series length
+  const minLen = Math.max(0, Math.min(labels.length, ...series.map((s) => s.values.length)));
   const data = labels.slice(0, minLen).map((label, idx) => {
     const row: Record<string, number | string> = { label };
     for (const s of series) row[s.name] = s.values[idx] ?? 0;
@@ -449,6 +470,10 @@ function Chart({ spec, tokens }: { spec: SlideSpecV1; tokens: Tokens }) {
   });
 
   const colors = paletteSeries(tokens);
+  const showLegend = legendWanted(spec);
+  const legendProps = getLegendProps(spec.components?.chart?.legend);
+  const showGrid = spec.components?.chart?.gridlines ?? false;
+  const fmt = getNumberFormatter(viz.valueFormat);
 
   const frameStyle: React.CSSProperties = {
     width: "100%",
@@ -460,33 +485,44 @@ function Chart({ spec, tokens }: { spec: SlideSpecV1; tokens: Tokens }) {
     boxSizing: "border-box",
   };
 
+  if (!data.length || !series.length) {
+    return <Placeholder text="[Chart] Missing series/labels" tokens={tokens} />;
+  }
+
   switch (viz.kind) {
     case "bar":
       return (
-        <div style={frameStyle}>
+        <div style={frameStyle} aria-label="Bar chart">
           <ResponsiveContainer>
             <BarChart data={data}>
-              <CartesianGrid stroke={hexWithAlpha(tokens.palette.neutral[5] ?? "#94A3B8", 0.4)} vertical={false} />
+              <CartesianGrid stroke={hexWithAlpha(tokens.palette.neutral[5] ?? "#94A3B8", showGrid ? 0.4 : 0)} vertical={false} />
               <XAxis dataKey="label" tick={{ fill: tokens.palette.neutral[3] }} />
-              <YAxis tick={{ fill: tokens.palette.neutral[3] }} />
-              <Tooltip />
+              <YAxis tick={{ fill: tokens.palette.neutral[3] }} tickFormatter={fmt} />
+              <Tooltip formatter={(v: any) => fmt(Number(v))} />
               {series.map((s, i) => (
-                <Bar key={s.name} dataKey={s.name} fill={colors[i % colors.length]} radius={4} />
+                <Bar
+                  key={s.name}
+                  dataKey={s.name}
+                  fill={colors[i % colors.length]}
+                  radius={4}
+                  label={viz.valueFormat ? { formatter: (v: any) => fmt(Number(v)), position: "top" as const } : undefined}
+                />
               ))}
-              {legendWanted(spec) && <Legend />}
+              {showLegend && <Legend {...legendProps} />}
             </BarChart>
           </ResponsiveContainer>
         </div>
       );
+
     case "line":
       return (
-        <div style={frameStyle}>
+        <div style={frameStyle} aria-label="Line chart">
           <ResponsiveContainer>
             <LineChart data={data}>
-              <CartesianGrid stroke={hexWithAlpha(tokens.palette.neutral[5] ?? "#94A3B8", 0.4)} />
+              <CartesianGrid stroke={hexWithAlpha(tokens.palette.neutral[5] ?? "#94A3B8", showGrid ? 0.4 : 0)} />
               <XAxis dataKey="label" tick={{ fill: tokens.palette.neutral[3] }} />
-              <YAxis tick={{ fill: tokens.palette.neutral[3] }} />
-              <Tooltip />
+              <YAxis tick={{ fill: tokens.palette.neutral[3] }} tickFormatter={fmt} />
+              <Tooltip formatter={(v: any) => fmt(Number(v))} />
               {series.map((s, i) => (
                 <Line
                   key={s.name}
@@ -494,23 +530,25 @@ function Chart({ spec, tokens }: { spec: SlideSpecV1; tokens: Tokens }) {
                   dataKey={s.name}
                   stroke={colors[i % colors.length]}
                   strokeWidth={2}
-                  dot={false}
+                  dot={viz.valueFormat ? { fill: colors[i % colors.length], r: 4 } : false}
+                  label={viz.valueFormat ? { formatter: (v: any) => fmt(Number(v)), position: "top" as const } : undefined}
                 />
               ))}
-              {legendWanted(spec) && <Legend />}
+              {showLegend && <Legend {...legendProps} />}
             </LineChart>
           </ResponsiveContainer>
         </div>
       );
+
     case "area":
       return (
-        <div style={frameStyle}>
+        <div style={frameStyle} aria-label="Area chart">
           <ResponsiveContainer>
             <AreaChart data={data}>
-              <CartesianGrid stroke={hexWithAlpha(tokens.palette.neutral[5] ?? "#94A3B8", 0.4)} />
+              <CartesianGrid stroke={hexWithAlpha(tokens.palette.neutral[5] ?? "#94A3B8", showGrid ? 0.4 : 0)} />
               <XAxis dataKey="label" tick={{ fill: tokens.palette.neutral[3] }} />
-              <YAxis tick={{ fill: tokens.palette.neutral[3] }} />
-              <Tooltip />
+              <YAxis tick={{ fill: tokens.palette.neutral[3] }} tickFormatter={fmt} />
+              <Tooltip formatter={(v: any) => fmt(Number(v))} />
               {series.map((s, i) => (
                 <Area
                   key={s.name}
@@ -521,11 +559,12 @@ function Chart({ spec, tokens }: { spec: SlideSpecV1; tokens: Tokens }) {
                   strokeWidth={2}
                 />
               ))}
-              {legendWanted(spec) && <Legend />}
+              {showLegend && <Legend {...legendProps} />}
             </AreaChart>
           </ResponsiveContainer>
         </div>
       );
+
     case "pie":
     case "doughnut": {
       const single = series[0] ?? { name: "Series", values: [] as number[] };
@@ -533,12 +572,13 @@ function Chart({ spec, tokens }: { spec: SlideSpecV1; tokens: Tokens }) {
         name: label,
         value: single.values[i] ?? 0,
       }));
+
       return (
-        <div style={frameStyle}>
+        <div style={frameStyle} aria-label={viz.kind === "doughnut" ? "Doughnut chart" : "Pie chart"}>
           <ResponsiveContainer>
             <PieChart>
-              <Tooltip />
-              <Legend />
+              <Tooltip formatter={(v: any) => fmt(Number(v))} />
+              {showLegend && <Legend {...legendProps} />}
               <Pie
                 data={pieData}
                 dataKey="value"
@@ -556,8 +596,8 @@ function Chart({ spec, tokens }: { spec: SlideSpecV1; tokens: Tokens }) {
         </div>
       );
     }
+
     case "scatter": {
-      // Use first two series as x/y; fallback to index on missing
       const x = series[0]?.values ?? [];
       const y = series[1]?.values ?? [];
       const scatterData = labels.slice(0, Math.min(x.length, y.length)).map((_, i) => ({
@@ -565,50 +605,56 @@ function Chart({ spec, tokens }: { spec: SlideSpecV1; tokens: Tokens }) {
         y: y[i] ?? 0,
       }));
       return (
-        <div style={frameStyle}>
+        <div style={frameStyle} aria-label="Scatter plot">
           <ResponsiveContainer>
             <ScatterChart>
-              <CartesianGrid stroke={hexWithAlpha(tokens.palette.neutral[5] ?? "#94A3B8", 0.4)} />
-              <XAxis dataKey="x" tick={{ fill: tokens.palette.neutral[3] }} />
-              <YAxis dataKey="y" tick={{ fill: tokens.palette.neutral[3] }} />
-              <Tooltip />
+              <CartesianGrid stroke={hexWithAlpha(tokens.palette.neutral[5] ?? "#94A3B8", showGrid ? 0.4 : 0)} />
+              <XAxis dataKey="x" tick={{ fill: tokens.palette.neutral[3] }} tickFormatter={fmt} />
+              <YAxis dataKey="y" tick={{ fill: tokens.palette.neutral[3] }} tickFormatter={fmt} />
+              <Tooltip formatter={(v: any) => fmt(Number(v))} />
               <Scatter data={scatterData} fill={tokens.palette.primary} />
+              {showLegend && <Legend {...legendProps} />}
             </ScatterChart>
           </ResponsiveContainer>
         </div>
       );
     }
-    default:
-      return (
-        <Placeholder
-          text={`[${viz.kind}] chart not supported in preview yet`}
-          tokens={tokens}
-        />
-      );
-  }
-}
 
+    default:
+      return <Placeholder text={`[${viz.kind}] chart not supported in preview yet`} tokens={tokens} />;
+  }
+});
+
+/** Respect back‑end legend semantics: "none" | "right" | "bottom" */
 function legendWanted(spec: SlideSpecV1) {
   const pos = spec.components?.chart?.legend;
   return pos !== "none";
 }
 
+function getLegendProps(pos?: "none" | "right" | "bottom") {
+  if (pos === "right") {
+    return { layout: "vertical" as const, align: "right" as const, verticalAlign: "middle" as const };
+  }
+  if (pos === "bottom") {
+    return { layout: "horizontal" as const, align: "center" as const, verticalAlign: "bottom" as const };
+  }
+  return { layout: "horizontal" as const, align: "center" as const, verticalAlign: "top" as const };
+}
+
 /* --------------------------------- Images ---------------------------------- */
 
-function ImageBlock({
+const ImageBlock = memo(function ImageBlock({
   item,
   tokens,
 }: {
   item: NonNullable<SlideSpecV1["content"]["images"]>[number];
   tokens: Tokens;
 }) {
+  const [broken, setBroken] = useState(false);
   const fit = item.fit ?? "cover";
-  const url =
-    item.source.type === "url" && item.source.url
-      ? item.source.url
-      : undefined;
+  const url = item.source.type === "url" && item.source.url ? item.source.url : undefined;
 
-  if (!url) {
+  if (!url || broken) {
     return <ImagePlaceholder alt={item.alt} tokens={tokens} />;
   }
 
@@ -616,18 +662,21 @@ function ImageBlock({
     <img
       src={url}
       alt={item.alt}
+      decoding="async"
+      loading="lazy"
+      onError={() => setBroken(true)}
       style={{
         width: "100%",
         height: "100%",
-        objectFit: fit,
+        objectFit: fit as React.CSSProperties["objectFit"],
         borderRadius: 8,
         display: "block",
       }}
     />
   );
-}
+});
 
-function ImagePlaceholder({ alt, tokens }: { alt: string; tokens: Tokens }) {
+const ImagePlaceholder = memo(function ImagePlaceholder({ alt, tokens }: { alt: string; tokens: Tokens }) {
   return (
     <div
       role="img"
@@ -650,7 +699,7 @@ function ImagePlaceholder({ alt, tokens }: { alt: string; tokens: Tokens }) {
       <span>{alt}</span>
     </div>
   );
-}
+});
 
 /* -------------------------------- Utility ---------------------------------- */
 
@@ -668,6 +717,9 @@ function Placeholder({ text, tokens }: { text: string; tokens: Tokens }) {
         borderRadius: 8,
         color: tokens.palette.neutral[3] ?? "#64748B",
         fontSize: 14,
+        textAlign: "center",
+        padding: 16,
+        boxSizing: "border-box",
       }}
     >
       {text}
@@ -684,24 +736,29 @@ function getGradientBackground(tokens: Tokens): string {
 
   switch (pattern) {
     case "hero":
-      return `linear-gradient(180deg, ${neutralLight} 0%, ${primary}14 50%, ${accent}0D 100%)`;
+      return `linear-gradient(180deg, ${neutralLight} 0%, ${hexWithAlpha(primary, 0.08)} 50%, ${hexWithAlpha(
+        accent,
+        0.05
+      )} 100%)`;
     case "minimal":
-      return `radial-gradient(ellipse at center, ${neutralLight} 0%, ${neutralMid}0D 100%)`;
+      return `radial-gradient(ellipse at center, ${neutralLight} 0%, ${hexWithAlpha(neutralMid, 0.05)} 100%)`;
     case "data-focused":
-      return `linear-gradient(90deg, ${neutralLight} 0%, ${accent}10 100%)`;
+      return `linear-gradient(90deg, ${neutralLight} 0%, ${hexWithAlpha(accent, 0.06)} 100%)`;
     case "split":
-      return `linear-gradient(135deg, ${neutralLight} 0%, ${primary}0D 50%, ${neutralLight} 100%)`;
+      return `linear-gradient(135deg, ${neutralLight} 0%, ${hexWithAlpha(primary, 0.05)} 50%, ${neutralLight} 100%)`;
     case "asymmetric":
-      return `linear-gradient(120deg, ${neutralLight} 0%, ${accent}14 60%, ${primary}0D 100%)`;
+      return `linear-gradient(120deg, ${neutralLight} 0%, ${hexWithAlpha(accent, 0.08)} 60%, ${hexWithAlpha(
+        primary,
+        0.05
+      )} 100%)`;
     case "grid":
-      return `radial-gradient(circle at 50% 50%, ${neutralLight} 0%, ${neutralMid}0A 100%)`;
+      return `radial-gradient(circle at 50% 50%, ${neutralLight} 0%, ${hexWithAlpha(neutralMid, 0.04)} 100%)`;
     default:
-      return `linear-gradient(135deg, ${neutralLight} 0%, ${neutralMid}08 50%, ${neutralLight} 100%)`;
+      return `linear-gradient(135deg, ${neutralLight} 0%, ${hexWithAlpha(neutralMid, 0.03)} 50%, ${neutralLight} 100%)`;
   }
 }
 
 function hexWithAlpha(hex: string, alpha: number): string {
-  // alpha ∈ [0,1]
   const a = Math.round(alpha * 255)
     .toString(16)
     .padStart(2, "0");
@@ -710,15 +767,49 @@ function hexWithAlpha(hex: string, alpha: number): string {
     const [r, g, b] = clean.split("").map((c) => c + c);
     return `#${r}${g}${b}${a}`;
   }
-  if (clean.length === 6) {
-    return `#${clean}${a}`;
-  }
-  return hex; // fallback
+  if (clean.length === 6) return `#${clean}${a}`;
+  return hex;
 }
+
+/* ------------------------------- Number fmt -------------------------------- */
+
+function getNumberFormatter(format?: SlideSpecV1["content"]["dataViz"] extends infer T ? T extends { valueFormat?: infer F } ? F : never : never) {
+  if (format === "percent") {
+    return (n: number) => {
+      // Accept either 0..1 or 0..100 inputs
+      const v = Math.abs(n) <= 1 ? n * 100 : n;
+      return `${roundSmart(v)}%`;
+    };
+  }
+  if (format === "currency") {
+    // Default to USD if unspecified by schema
+    const nf = new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+    return (n: number) => nf.format(n);
+  }
+  if (format === "number") {
+    return (n: number) => shortNumber(n);
+  }
+  // auto
+  return (n: number) => shortNumber(n);
+}
+
+function shortNumber(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000_000) return `${roundSmart(n / 1_000_000_000)}B`;
+  if (abs >= 1_000_000) return `${roundSmart(n / 1_000_000)}M`;
+  if (abs >= 1_000) return `${roundSmart(n / 1_000)}k`;
+  return `${roundSmart(n)}`;
+}
+
+function roundSmart(n: number): string {
+  const v = Math.abs(n) < 10 ? Number(n.toFixed(2)) : Math.abs(n) < 100 ? Number(n.toFixed(1)) : Math.round(n);
+  return `${v}`;
+}
+
+/* ------------------------------ Series colors ------------------------------ */
 
 function paletteSeries(tokens: Tokens): string[] {
   const p = tokens.palette;
-  // Build a pleasant series palette from primary/accent + neutrals
   const base = [p.primary, p.accent, p.neutral[2], p.neutral[3], p.neutral[4]];
   return base.map((c, i) => (i <= 1 ? c : hexWithAlpha(c, 0.85)));
 }

@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { SlideSpecV1 } from "../types/SlideSpecV1";
+import type { SlideSpecV1 } from "@plzfixthx/slide-spec";
 
 describe("Slide Generation Integration", () => {
   const createProfessionalSlideSpec = (): SlideSpecV1 => ({

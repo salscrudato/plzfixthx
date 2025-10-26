@@ -1,0 +1,154 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & TypeCheck
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Lint functions
+        run: npm run lint --prefix functions
+
+      - name: Lint web
+        run: npm run lint --prefix web
+
+      - name: TypeCheck functions
+        run: npm run build --prefix functions
+
+      - name: TypeCheck web
+        run: npm run build --prefix web
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Run functions tests
+        run: npm test --prefix functions
+
+      - name: Run web tests
+        run: npm test --prefix web
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./functions/coverage/coverage-final.json,./web/coverage/coverage-final.json
+          flags: unittests
+          fail_ci_if_error: false
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, unit-tests]
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Build functions
+        run: npm run build:functions
+
+      - name: Build web
+        run: npm run build:web
+
+      - name: Check bundle size
+        run: |
+          WEB_SIZE=$(du -sh web/dist | cut -f1)
+          echo "Web bundle size: $WEB_SIZE"
+          FUNCTIONS_SIZE=$(du -sh functions/lib | cut -f1)
+          echo "Functions bundle size: $FUNCTIONS_SIZE"
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Audit functions
+        run: npm audit --prefix functions --audit-level=moderate || true
+
+      - name: Audit web
+        run: npm audit --prefix web --audit-level=moderate || true
+

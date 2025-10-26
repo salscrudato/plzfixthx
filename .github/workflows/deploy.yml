@@ -1,0 +1,87 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install functions dependencies
+        run: npm ci --prefix functions
+
+      - name: Install web dependencies
+        run: npm ci --prefix web
+
+      - name: Lint
+        run: |
+          npm run lint --prefix functions
+          npm run lint --prefix web
+
+      - name: TypeCheck
+        run: |
+          npm run build --prefix functions
+          npm run build --prefix web
+
+      - name: Run tests
+        run: |
+          npm test --prefix functions
+          npm test --prefix web
+
+      - name: Build functions
+        run: npm run build:functions
+
+      - name: Build web
+        run: npm run build:web
+
+      - name: Setup Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Deploy to Firebase
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          firebase deploy --token "$FIREBASE_TOKEN" --project "$FIREBASE_PROJECT_ID"
+
+      - name: Create deployment notification
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.ref,
+              environment: 'production',
+              description: 'Production deployment',
+              auto_merge: false,
+              required_contexts: []
+            });
+
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: production-build-${{ github.sha }}
+          path: |
+            web/dist
+            functions/lib
+          retention-days: 30
+

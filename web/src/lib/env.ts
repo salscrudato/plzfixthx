@@ -12,6 +12,7 @@ const envSchema = z.object({
   VITE_FIREBASE_MEASUREMENT_ID: z.string().optional(),
   VITE_FUNCTIONS_BASE_URL: z.string().url("Functions base URL must be a valid URL").optional(),
   VITE_FUNCTIONS_REGION: z.string().optional(),
+  VITE_USE_STREAMING: z.string().optional(), // "true" or "false"
   MODE: z.enum(["development", "production", "test"]).optional(),
   DEV: z.boolean().optional(),
   PROD: z.boolean().optional(),
@@ -69,5 +70,14 @@ export function isDevelopment(): boolean {
 /** Check if running in production mode */
 export function isProduction(): boolean {
   return import.meta.env.PROD === true;
+}
+
+/** Check if streaming is enabled (default: true in production, false in development) */
+export function isStreamingEnabled(): boolean {
+  const envValue = import.meta.env.VITE_USE_STREAMING;
+  if (envValue === "true") return true;
+  if (envValue === "false") return false;
+  // Default: enabled in production, disabled in development
+  return isProduction();
 }
 

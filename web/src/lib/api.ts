@@ -117,6 +117,48 @@ export async function apiExportMultiple(specs: SlideSpec[]): Promise<Blob> {
   return postBlob("/exportPPTX", { specs });
 }
 
+/** Export slide preview as PNG */
+export async function apiExportPNG(element: HTMLElement): Promise<Blob> {
+  const { default: html2canvas } = await import("html2canvas");
+  const canvas = await html2canvas(element, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: "#ffffff",
+  });
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+    }, "image/png");
+  });
+}
+
+/** Export slide preview as PDF */
+export async function apiExportPDF(element: HTMLElement): Promise<Blob> {
+  const { default: html2canvas } = await import("html2canvas");
+  const { jsPDF } = await import("jspdf");
+
+  const canvas = await html2canvas(element, {
+    scale: 2,
+    useCORS: true,
+    allowTaint: true,
+    backgroundColor: "#ffffff",
+  });
+
+  const imgData = canvas.toDataURL("image/png");
+  const pdf = new jsPDF({
+    orientation: canvas.width > canvas.height ? "landscape" : "portrait",
+    unit: "mm",
+    format: [canvas.width / 3.78, canvas.height / 3.78],
+  });
+
+  pdf.addImage(imgData, "PNG", 0, 0, pdf.internal.pageSize.getWidth(), pdf.internal.pageSize.getHeight());
+  return new Promise((resolve) => {
+    const blob = pdf.output("blob");
+    resolve(blob);
+  });
+}
+
 /** Utility to trigger a browser download */
 export function downloadBlob(blob: Blob, filename = "plzfixthx-presentation.pptx") {
   const url = URL.createObjectURL(blob);

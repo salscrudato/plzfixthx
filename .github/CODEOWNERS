@@ -1,0 +1,30 @@
+# Code ownership rules for plzfixthx
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Global owners
+* @salscrudato
+
+# Functions
+/functions/ @salscrudato
+/functions/src/aiHelpers.ts @salscrudato
+/functions/src/pptxBuilder/ @salscrudato
+/functions/src/security.ts @salscrudato
+/functions/src/metrics.ts @salscrudato
+
+# Web
+/web/ @salscrudato
+/web/src/components/ @salscrudato
+/web/src/hooks/ @salscrudato
+/web/src/lib/ @salscrudato
+
+# Shared
+/shared/ @salscrudato
+
+# CI/CD
+/.github/ @salscrudato
+
+# Configuration
+/firebase.json @salscrudato
+/firestore.rules @salscrudato
+/storage.rules @salscrudato
+
