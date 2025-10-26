@@ -1,5 +1,4 @@
 import * as logger from "firebase-functions/logger";
-import corsLib from "cors";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onRequest } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
@@ -15,7 +14,6 @@ import {
   moderateContent,
   enhanceSlideSpec,
 } from "./aiHelpers";
-import { ENHANCED_SYSTEM_PROMPT } from "./prompts";
 
 // Import PPTX builders (now includes universal builder)
 import { buildSlideFromSpec } from "./pptxBuilder";
@@ -39,66 +37,7 @@ try {
   initializeApp();
 }
 
-/**
- * CORS configuration with environment-based allowlist
- * Restricts cross-origin requests to approved domains
- */
-const getAllowedOrigins = (): string[] => {
-  const env = process.env.NODE_ENV || "development";
-
-  const allowlists: Record<string, string[]> = {
-    production: [
-      "https://plzfixthx.com",
-      "https://www.plzfixthx.com",
-      "https://app.plzfixthx.com",
-      "https://pls-fix-thx.web.app",
-      "https://pls-fix-thx.firebaseapp.com",
-    ],
-    staging: [
-      "https://staging.plzfixthx.com",
-      "https://staging-app.plzfixthx.com",
-      "https://pls-fix-thx.web.app",
-      "https://pls-fix-thx.firebaseapp.com",
-      "http://localhost:3000",
-      "http://localhost:5173",
-    ],
-    development: [
-      "http://localhost:3000",
-      "http://localhost:3001",
-      "http://localhost:5173",
-      "http://127.0.0.1:3000",
-      "http://127.0.0.1:3001",
-      "http://127.0.0.1:5173",
-      "https://pls-fix-thx.web.app",
-      "https://pls-fix-thx.firebaseapp.com",
-    ],
-  };
-
-  return allowlists[env] || allowlists.development;
-};
-
-const cors = corsLib({
-  origin: (origin, callback) => {
-    const allowed = getAllowedOrigins();
-
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    if (allowed.includes(origin)) {
-      callback(null, true);
-    } else {
-      logger.warn("CORS rejected", { origin, allowed });
-      // During development, still allow but log a warning
-      callback(null, true);
-    }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  maxAge: 3600,
-});
+// Firebase Cloud Functions v2 handles CORS automatically when cors: true is set in onRequest options
 
 /** SlideSpec schema (lean, aligned with exporter) */
 const SlideSpecZ = z.object({
@@ -260,18 +199,6 @@ const SlideSpecZ = z.object({
 });
 type SlideSpec = z.infer<typeof SlideSpecZ>;
 
-/** System prompt (JSON-only) */
-const SYSTEM_PROMPT = `
-You are the SlideSpec generator for plzfixthx.
-Return a SINGLE RFC8259-compliant JSON object that VALIDATES against SlideSpec v1.
-Hard rules:
-- Output ONLY JSON.
-- meta.version "1.0"; aspectRatio "16:9" default.
-- Concise, professional text; <=6 bullets total; levels 1-3.
-- If dataViz present, labels 2..10; series lengths == labels length.
-- Hex colors (#RRGGBB). IDs [A-Za-z0-9_-].
-`;
-
 /** Offline fallback SlideSpec (no AI) */
 function fallbackSpec(prompt: string): SlideSpec {
   return {
@@ -329,7 +256,7 @@ function fallbackSpec(prompt: string): SlideSpec {
         md: "0 4px 8px rgba(0,0,0,.12)",
         lg: "0 12px 24px rgba(0,0,0,.18)",
       },
-      contrast: { minTextContrast: 4.5, minUiContrast: 3 },
+      contrast: { minTextContrast: 7, minUiContrast: 4.5 },
     },
   };
 }
@@ -356,167 +283,65 @@ async function callVendor(prompt: string): Promise<SlideSpec> {
 
 /** POST /generateSlideSpec {prompt} -> {spec} */
 export const generateSlideSpec = onRequest(
-  { cors: false, secrets: [AI_API_KEY, AI_BASE_URL, AI_MODEL] },
-  (req, res) => {
-    cors(req, res, async () => {
-      if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
-
-      const startTime = Date.now();
-      const memoryBefore = process.memoryUsage().heapUsed / 1024 / 1024;
-
-      try {
-        // Sanitize and validate prompt
-        const rawPrompt = (req.body?.prompt ?? "").toString();
-        const prompt = sanitizePrompt(rawPrompt, 800);
-
-        logger.info("📝 Spec generation started", {
-          promptLength: prompt.length,
-          timestamp: new Date().toISOString(),
-        });
-
-        // Content moderation
-        const moderation = moderateContent(prompt);
-        if (!moderation.safe) {
-          logger.warn("⚠️ Content moderation rejected", {
-            reason: moderation.reason,
-            timestamp: new Date().toISOString(),
-          });
-          return res.status(400).json({
-            error: moderation.reason || "Content not allowed",
-            spec: fallbackSpec("Content moderation failed"),
-          });
-        }
-
-        // Generate slide spec
-        const spec = await callVendor(prompt);
-
-        const endTime = Date.now();
-        const duration = endTime - startTime;
-        const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
-
-        logger.info("✅ Spec generation completed", {
-          durationMs: duration,
-          memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
-          hasTitle: !!spec.content.title,
-          hasSubtitle: !!spec.content.subtitle,
-          hasBullets: !!spec.content.bullets,
-          hasDataViz: !!spec.content.dataViz,
-          aspectRatio: spec.meta.aspectRatio,
-          timestamp: new Date().toISOString(),
-        });
-
-        res.status(200).json({ spec });
-      } catch (e: any) {
-        const endTime = Date.now();
-        const duration = endTime - startTime;
-        const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
-
-        logger.error("❌ Spec generation failed", {
-          error: e.message || String(e),
-          stack: e.stack,
-          durationMs: duration,
-          memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
-          timestamp: new Date().toISOString(),
-        });
-
-        // Return fallback spec on error
-        const fallback = fallbackSpec(req.body?.prompt || "");
-        res.status(200).json({
-          spec: fallback,
-          warning: "Using fallback due to error: " + e.message,
-        });
-      }
-    });
-  }
-);
-
-/** POST /exportPPTX {spec} or {specs: []} -> .pptx binary */
-export const exportPPTX = onRequest({ cors: false }, (req, res) => {
-  cors(req, res, async () => {
-    if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+  { cors: true, secrets: [AI_API_KEY, AI_BASE_URL, AI_MODEL] },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
 
     const startTime = Date.now();
     const memoryBefore = process.memoryUsage().heapUsed / 1024 / 1024;
 
     try {
-      // Support both single spec and array of specs
-      const body = req.body;
-      let specs: any[];
+      // Sanitize and validate prompt
+      const rawPrompt = (req.body?.prompt ?? "").toString();
+      const prompt = sanitizePrompt(rawPrompt, 800);
 
-      if (body?.specs && Array.isArray(body.specs)) {
-        // Multiple slides - sanitize before parsing
-        specs = body.specs.map((s: any) => {
-          // Sanitize palette before validation
-          if (s?.styleTokens?.palette?.neutral) {
-            const hexPattern = /^#[0-9A-Fa-f]{6}$/;
-            s.styleTokens.palette.neutral = (s.styleTokens.palette.neutral as (string | null | undefined)[])
-              .filter((color: any): color is string => color != null && typeof color === 'string' && hexPattern.test(color))
-              .slice(0, 9);
-            if (s.styleTokens.palette.neutral.length < 5) {
-              s.styleTokens.palette.neutral = [
-                "#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8",
-                "#CBD5E1", "#E2E8F0", "#F1F5F9", "#F8FAFC"
-              ];
-            }
-          }
-          return SlideSpecZ.parse(s);
+      logger.info("📝 Spec generation started", {
+        promptLength: prompt.length,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Content moderation
+      const moderation = moderateContent(prompt);
+      if (!moderation.safe) {
+        logger.warn("⚠️ Content moderation rejected", {
+          reason: moderation.reason,
+          timestamp: new Date().toISOString(),
         });
-      } else if (body?.spec) {
-        // Single slide (backward compatibility) - sanitize before parsing
-        const spec = body.spec;
-        if (spec?.styleTokens?.palette?.neutral) {
-          const hexPattern = /^#[0-9A-Fa-f]{6}$/;
-          spec.styleTokens.palette.neutral = (spec.styleTokens.palette.neutral as (string | null | undefined)[])
-            .filter((color: any): color is string => color != null && typeof color === 'string' && hexPattern.test(color))
-            .slice(0, 9);
-          if (spec.styleTokens.palette.neutral.length < 5) {
-            spec.styleTokens.palette.neutral = [
-              "#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8",
-              "#CBD5E1", "#E2E8F0", "#F1F5F9", "#F8FAFC"
-            ];
-          }
-        }
-        specs = [SlideSpecZ.parse(spec)];
-      } else {
-        throw new Error("Missing spec or specs in request body");
+        res.status(400).json({
+          error: moderation.reason || "Content not allowed",
+          spec: fallbackSpec("Content moderation failed"),
+        });
+        return;
       }
 
-      logger.info("📊 Export started", {
-        slideCount: specs.length,
-        timestamp: new Date().toISOString(),
-      });
-
-      const buf = await buildPptx(specs);
+      // Generate slide spec
+      const spec = await callVendor(prompt);
 
       const endTime = Date.now();
-      const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
       const duration = endTime - startTime;
-      const bufferSize = buf.byteLength / 1024 / 1024;
+      const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
 
-      logger.info("✅ Export completed successfully", {
-        slideCount: specs.length,
+      logger.info("✅ Spec generation completed", {
         durationMs: duration,
-        bufferSizeMB: bufferSize.toFixed(2),
         memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
-        withinBudget: duration <= 1500 && memoryAfter <= 300,
+        hasTitle: !!spec.content.title,
+        hasSubtitle: !!spec.content.subtitle,
+        hasBullets: !!spec.content.bullets,
+        hasDataViz: !!spec.content.dataViz,
+        aspectRatio: spec.meta.aspectRatio,
         timestamp: new Date().toISOString(),
       });
 
-      res.setHeader(
-        "Content-Type",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-      );
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="plzfixthx-presentation.pptx"`
-      );
-      res.status(200).send(Buffer.from(buf));
+      res.status(200).json({ spec });
     } catch (e: any) {
       const endTime = Date.now();
       const duration = endTime - startTime;
       const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
 
-      logger.error("❌ Export failed", {
+      logger.error("❌ Spec generation failed", {
         error: e.message || String(e),
         stack: e.stack,
         durationMs: duration,
@@ -524,9 +349,114 @@ export const exportPPTX = onRequest({ cors: false }, (req, res) => {
         timestamp: new Date().toISOString(),
       });
 
-      res.status(400).send(`Export error: ${e.message || String(e)}`);
+      // Return fallback spec on error
+      const fallback = fallbackSpec(req.body?.prompt || "");
+      res.status(200).json({
+        spec: fallback,
+        warning: "Using fallback due to error: " + e.message,
+      });
     }
-  });
+  }
+);
+
+/** POST /exportPPTX {spec} or {specs: []} -> .pptx binary */
+export const exportPPTX = onRequest({ cors: true }, async (req, res) => {
+  if (req.method !== "POST") {
+    res.status(405).send("Method Not Allowed");
+    return;
+  }
+
+  const startTime = Date.now();
+  const memoryBefore = process.memoryUsage().heapUsed / 1024 / 1024;
+
+  try {
+    // Support both single spec and array of specs
+    const body = req.body;
+    let specs: any[];
+
+    if (body?.specs && Array.isArray(body.specs)) {
+      // Multiple slides - sanitize before parsing
+      specs = body.specs.map((s: any) => {
+        // Sanitize palette before validation
+        if (s?.styleTokens?.palette?.neutral) {
+          const hexPattern = /^#[0-9A-Fa-f]{6}$/;
+          s.styleTokens.palette.neutral = (s.styleTokens.palette.neutral as (string | null | undefined)[])
+            .filter((color: any): color is string => color != null && typeof color === 'string' && hexPattern.test(color))
+            .slice(0, 9);
+          if (s.styleTokens.palette.neutral.length < 5) {
+            s.styleTokens.palette.neutral = [
+              "#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8",
+              "#CBD5E1", "#E2E8F0", "#F1F5F9", "#F8FAFC"
+            ];
+          }
+        }
+        return SlideSpecZ.parse(s);
+      });
+    } else if (body?.spec) {
+      // Single slide (backward compatibility) - sanitize before parsing
+      const spec = body.spec;
+      if (spec?.styleTokens?.palette?.neutral) {
+        const hexPattern = /^#[0-9A-Fa-f]{6}$/;
+        spec.styleTokens.palette.neutral = (spec.styleTokens.palette.neutral as (string | null | undefined)[])
+          .filter((color: any): color is string => color != null && typeof color === 'string' && hexPattern.test(color))
+          .slice(0, 9);
+        if (spec.styleTokens.palette.neutral.length < 5) {
+          spec.styleTokens.palette.neutral = [
+            "#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8",
+            "#CBD5E1", "#E2E8F0", "#F1F5F9", "#F8FAFC"
+          ];
+        }
+      }
+      specs = [SlideSpecZ.parse(spec)];
+    } else {
+      throw new Error("Missing spec or specs in request body");
+    }
+
+    logger.info("📊 Export started", {
+      slideCount: specs.length,
+      timestamp: new Date().toISOString(),
+    });
+
+    const buf = await buildPptx(specs);
+
+    const endTime = Date.now();
+    const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
+    const duration = endTime - startTime;
+    const bufferSize = buf.byteLength / 1024 / 1024;
+
+    logger.info("✅ Export completed successfully", {
+      slideCount: specs.length,
+      durationMs: duration,
+      bufferSizeMB: bufferSize.toFixed(2),
+      memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
+      withinBudget: duration <= 1500 && memoryAfter <= 300,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="plzfixthx-presentation.pptx"`
+    );
+    res.status(200).send(Buffer.from(buf));
+  } catch (e: any) {
+    const endTime = Date.now();
+    const duration = endTime - startTime;
+    const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
+
+    logger.error("❌ Export failed", {
+      error: e.message || String(e),
+      stack: e.stack,
+      durationMs: duration,
+      memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
+      timestamp: new Date().toISOString(),
+    });
+
+    res.status(400).send(`Export error: ${e.message || String(e)}`);
+  }
 });
 
 /** PPTX builder - supports single or multiple slides */
