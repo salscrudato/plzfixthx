@@ -199,7 +199,7 @@ const SlideSpecZ = z.object({
 });
 type SlideSpec = z.infer<typeof SlideSpecZ>;
 
-/** Offline fallback SlideSpec (no AI) */
+/** Offline fallback SlideSpec (no AI) - with corrected contrast values */
 function fallbackSpec(prompt: string): SlideSpec {
   return {
     meta: {
