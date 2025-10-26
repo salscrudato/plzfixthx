@@ -43,40 +43,55 @@ function isValidSpec(obj: unknown): boolean {
   return hasRequiredFields && hasCorrectTypes;
 }
 
-/** Create a fallback spec with default values */
+/** Create a fallback spec with default values and proper layout */
 function createFallbackSpec(): SlideSpecV1 {
   return {
     meta: {
       version: "1.0",
       locale: "en-US",
-      theme: "Default",
+      theme: "Professional",
       aspectRatio: "16:9"
     },
     content: {
       title: { id: "title", text: "Your Slide" },
-      subtitle: { id: "subtitle", text: "Add your content here" }
+      subtitle: { id: "subtitle", text: "Add your content here" },
+      bullets: [{
+        id: "b1",
+        items: [
+          { text: "Professional design", level: 1 },
+          { text: "AI-powered generation", level: 1 },
+          { text: "Ready to export", level: 1 }
+        ]
+      }]
     },
     layout: {
-      grid: { rows: 12, cols: 12, gutter: 16, margin: { t: 20, r: 20, b: 20, l: 20 } },
-      regions: [],
-      anchors: []
+      grid: { rows: 8, cols: 12, gutter: 8, margin: { t: 32, r: 32, b: 32, l: 32 } },
+      regions: [
+        { name: "header", rowStart: 1, colStart: 1, rowSpan: 2, colSpan: 12 },
+        { name: "body", rowStart: 3, colStart: 1, rowSpan: 5, colSpan: 12 }
+      ],
+      anchors: [
+        { refId: "title", region: "header", order: 0 },
+        { refId: "subtitle", region: "header", order: 1 },
+        { refId: "b1", region: "body", order: 0 }
+      ]
     },
     styleTokens: {
       palette: {
-        primary: "#6366F1",
-        accent: "#EC4899",
+        primary: "#2563EB",
+        accent: "#F59E0B",
         neutral: ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0", "#F8FAFC"]
       },
       typography: {
-        fonts: { sans: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" },
-        sizes: { "step_-2": 12, "step_-1": 14, step_0: 16, step_1: 20, step_2: 24, step_3: 32 },
+        fonts: { sans: "Aptos, Calibri, Arial, sans-serif" },
+        sizes: { "step_-2": 12, "step_-1": 14, step_0: 16, step_1: 20, step_2: 28, step_3: 44 },
         weights: { regular: 400, medium: 500, semibold: 600, bold: 700 },
         lineHeights: { compact: 1.2, standard: 1.5 }
       },
-      spacing: { base: 8, steps: [0, 4, 8, 12, 16, 20, 24, 32] },
+      spacing: { base: 4, steps: [0, 4, 8, 12, 16, 24, 32] },
       radii: { sm: 4, md: 8, lg: 12 },
-      shadows: { sm: "0 1px 2px rgba(0,0,0,0.05)", md: "0 4px 6px rgba(0,0,0,0.1)", lg: "0 10px 15px rgba(0,0,0,0.1)" },
-      contrast: { minTextContrast: 4.5, minUiContrast: 3 }
+      shadows: { sm: "0 2px 4px rgba(0,0,0,0.08)", md: "0 4px 12px rgba(0,0,0,0.12)", lg: "0 12px 32px rgba(0,0,0,0.16)" },
+      contrast: { minTextContrast: 7, minUiContrast: 4.5 }
     }
   };
 }

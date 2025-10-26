@@ -117,8 +117,8 @@ describe("aiHelpers", () => {
         }
       };
       const enhanced = enhanceSlideSpec(spec);
-      expect(enhanced.styleTokens.palette.primary).toBe("#6366F1");
-      expect(enhanced.styleTokens.palette.accent).toBe("#EC4899");
+      expect(enhanced.styleTokens.palette.primary).toBe("#1E40AF");
+      expect(enhanced.styleTokens.palette.accent).toBe("#F59E0B");
     });
 
     it("should ensure neutral palette exists", () => {

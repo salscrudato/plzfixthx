@@ -8,25 +8,36 @@ import { initializeApp } from "firebase-admin/app";
 import { z } from "zod";
 import PptxGenJS from "pptxgenjs";
 
-// For external calls
-import { fetch as undiciFetch } from "undici";
-
 // Import AI helpers
-import { callAIWithRetry, sanitizePrompt, moderateContent, enhanceSlideSpec } from "./aiHelpers";
+import {
+  callAIWithRetry,
+  sanitizePrompt,
+  moderateContent,
+  enhanceSlideSpec,
+} from "./aiHelpers";
 import { ENHANCED_SYSTEM_PROMPT } from "./prompts";
 
-// Import PPTX builder
-import { buildHeaderOnlySlide } from "./pptxBuilder";
+// Import PPTX builders (now includes universal builder)
+import { buildSlideFromSpec } from "./pptxBuilder";
 
 // Define secrets
 const AI_API_KEY = defineSecret("AI_API_KEY");
 const AI_BASE_URL = defineSecret("AI_BASE_URL");
 const AI_MODEL = defineSecret("AI_MODEL");
 
-setGlobalOptions({ region: "us-central1", memory: "512MiB", cpu: 1, timeoutSeconds: 60 });
+setGlobalOptions({
+  region: "us-central1",
+  memory: "512MiB",
+  cpu: 1,
+  timeoutSeconds: 60,
+});
 
 // Admin init (idempotent)
-try { getApp(); } catch { initializeApp(); }
+try {
+  getApp();
+} catch {
+  initializeApp();
+}
 
 /**
  * CORS configuration with environment-based allowlist
@@ -41,7 +52,7 @@ const getAllowedOrigins = (): string[] => {
       "https://www.plzfixthx.com",
       "https://app.plzfixthx.com",
       "https://pls-fix-thx.web.app",
-      "https://pls-fix-thx.firebaseapp.com"
+      "https://pls-fix-thx.firebaseapp.com",
     ],
     staging: [
       "https://staging.plzfixthx.com",
@@ -49,7 +60,7 @@ const getAllowedOrigins = (): string[] => {
       "https://pls-fix-thx.web.app",
       "https://pls-fix-thx.firebaseapp.com",
       "http://localhost:3000",
-      "http://localhost:5173"
+      "http://localhost:5173",
     ],
     development: [
       "http://localhost:3000",
@@ -59,8 +70,8 @@ const getAllowedOrigins = (): string[] => {
       "http://127.0.0.1:3001",
       "http://127.0.0.1:5173",
       "https://pls-fix-thx.web.app",
-      "https://pls-fix-thx.firebaseapp.com"
-    ]
+      "https://pls-fix-thx.firebaseapp.com",
+    ],
   };
 
   return allowlists[env] || allowlists.development;
@@ -79,83 +90,173 @@ const cors = corsLib({
       callback(null, true);
     } else {
       logger.warn("CORS rejected", { origin, allowed });
-      // Still allow the request but log the warning
-      // This prevents CORS errors during development
+      // During development, still allow but log a warning
       callback(null, true);
     }
   },
   credentials: true,
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  maxAge: 3600
+  maxAge: 3600,
 });
 
-/** SlideSpec schema (lean) */
+/** SlideSpec schema (lean, aligned with exporter) */
 const SlideSpecZ = z.object({
   meta: z.object({
     version: z.literal("1.0"),
     locale: z.string().default("en-US"),
     theme: z.string(),
-    aspectRatio: z.enum(["16:9","4:3"]).default("16:9")
+    aspectRatio: z.enum(["16:9", "4:3"]).default("16:9"),
   }),
   content: z.object({
     title: z.object({ id: z.string(), text: z.string().min(1) }),
-    subtitle: z.object({ id: z.string(), text: z.string().min(1) }).optional(),
-    bullets: z.array(z.object({
-      id: z.string(),
-      items: z.array(z.object({ text: z.string(), level: z.number().int().min(1).max(3) })).min(1).max(8)
-    })).max(3).optional(),
-    callouts: z.array(z.object({
-      id: z.string(), title: z.string().optional(), text: z.string(), variant: z.enum(["note","success","warning","danger"])
-    })).max(2).optional(),
-    dataViz: z.object({
-      id: z.string(),
-      kind: z.enum(["bar","line","pie"]),
-      title: z.string().optional(),
-      labels: z.array(z.string()).min(2).max(10),
-      series: z.array(z.object({ name: z.string(), values: z.array(z.number()) })).min(1).max(3)
-    }).optional(),
-    imagePlaceholders: z.array(z.object({
-      id: z.string(), role: z.enum(["hero","logo","illustration","icon"]), alt: z.string()
-    })).max(2).optional()
+    subtitle: z
+      .object({ id: z.string(), text: z.string().min(1) })
+      .optional(),
+    bullets: z
+      .array(
+        z.object({
+          id: z.string(),
+          items: z
+            .array(
+              z.object({
+                text: z.string(),
+                level: z.number().int().min(1).max(3),
+              })
+            )
+            .min(1)
+            .max(8),
+        })
+      )
+      .max(3)
+      .optional(),
+    callouts: z
+      .array(
+        z.object({
+          id: z.string(),
+          title: z.string().optional(),
+          text: z.string(),
+          variant: z.enum(["note", "success", "warning", "danger"]),
+        })
+      )
+      .max(2)
+      .optional(),
+    dataViz: z
+      .object({
+        id: z.string(),
+        // Expanded kinds to match universal builder support
+        kind: z.enum(["bar", "line", "pie", "doughnut", "area", "scatter"]),
+        title: z.string().optional(),
+        labels: z.array(z.string()).min(2).max(10),
+        series: z
+          .array(
+            z.object({ name: z.string(), values: z.array(z.number()) })
+          )
+          .min(1)
+          .max(3),
+      })
+      .optional(),
+    imagePlaceholders: z
+      .array(
+        z.object({
+          id: z.string(),
+          role: z.enum(["hero", "logo", "illustration", "icon"]),
+          alt: z.string(),
+        })
+      )
+      .max(2)
+      .optional(),
   }),
   layout: z.object({
     grid: z.object({
       rows: z.number().int().min(3).max(12),
       cols: z.number().int().min(3).max(12),
       gutter: z.number().min(0),
-      margin: z.object({ t: z.number(), r: z.number(), b: z.number(), l: z.number() })
+      margin: z.object({
+        t: z.number(),
+        r: z.number(),
+        b: z.number(),
+        l: z.number(),
+      }),
     }),
-    regions: z.array(z.object({
-      name: z.enum(["header","body","footer","aside"]),
-      rowStart: z.number().int().positive(), colStart: z.number().int().positive(),
-      rowSpan: z.number().int().positive(),  colSpan: z.number().int().positive()
-    })).min(1).max(4),
-    anchors: z.array(z.object({
-      refId: z.string(), region: z.enum(["header","body","footer","aside"]), order: z.number().int().min(0),
-      span: z.object({ rows: z.number().int().positive(), cols: z.number().int().positive() }).optional()
-    })).min(1).max(8)
+    regions: z
+      .array(
+        z.object({
+          name: z.enum(["header", "body", "footer", "aside"]),
+          rowStart: z.number().int().positive(),
+          colStart: z.number().int().positive(),
+          rowSpan: z.number().int().positive(),
+          colSpan: z.number().int().positive(),
+        })
+      )
+      .min(1)
+      .max(4),
+    anchors: z
+      .array(
+        z.object({
+          refId: z.string(),
+          region: z.enum(["header", "body", "footer", "aside"]),
+          order: z.number().int().min(0),
+          span: z
+            .object({
+              rows: z.number().int().positive(),
+              cols: z.number().int().positive(),
+            })
+            .optional(),
+        })
+      )
+      .min(1)
+      .max(8),
   }),
   styleTokens: z.object({
-    palette: z.object({ primary: z.string(), accent: z.string(), neutral: z.array(z.string()).min(5).max(9) }),
+    palette: z.object({
+      primary: z.string(),
+      accent: z.string(),
+      neutral: z.array(z.string()).min(5).max(9),
+    }),
     typography: z.object({
-      fonts: z.object({ sans: z.string(), serif: z.string().optional(), mono: z.string().optional() }),
-      sizes: z.object({ "step_-2": z.number(), "step_-1": z.number(), step_0: z.number(), step_1: z.number(), step_2: z.number(), step_3: z.number() }),
-      weights: z.object({ regular: z.number(), medium: z.number(), semibold: z.number(), bold: z.number() }),
-      lineHeights: z.object({ compact: z.number(), standard: z.number() })
+      fonts: z.object({
+        sans: z.string(),
+        serif: z.string().optional(),
+        mono: z.string().optional(),
+      }),
+      sizes: z.object({
+        "step_-2": z.number(),
+        "step_-1": z.number(),
+        step_0: z.number(),
+        step_1: z.number(),
+        step_2: z.number(),
+        step_3: z.number(),
+      }),
+      weights: z.object({
+        regular: z.number(),
+        medium: z.number(),
+        semibold: z.number(),
+        bold: z.number(),
+      }),
+      lineHeights: z.object({ compact: z.number(), standard: z.number() }),
     }),
     spacing: z.object({ base: z.number(), steps: z.array(z.number()).min(5).max(10) }),
     radii: z.object({ sm: z.number(), md: z.number(), lg: z.number() }),
     shadows: z.object({ sm: z.string(), md: z.string(), lg: z.string() }),
-    contrast: z.object({ minTextContrast: z.number(), minUiContrast: z.number() })
+    contrast: z.object({ minTextContrast: z.number(), minUiContrast: z.number() }),
   }),
-  components: z.object({
-    bulletList: z.object({ variant: z.enum(["compact","spacious"]).optional() }).optional(),
-    callout: z.object({ variant: z.enum(["flat","elevated"]).optional() }).optional(),
-    chart: z.object({ legend: z.enum(["none","right","bottom"]).optional(), gridlines: z.boolean().optional() }).optional(),
-    image: z.object({ fit: z.enum(["cover","contain"]).optional() }).optional(),
-    title: z.object({ align: z.enum(["left","center","right"]).optional() }).optional()
-  }).optional()
+  components: z
+    .object({
+      bulletList: z
+        .object({ variant: z.enum(["compact", "spacious"]).optional() })
+        .optional(),
+      callout: z.object({ variant: z.enum(["flat", "elevated"]).optional() }).optional(),
+      chart: z
+        .object({
+          legend: z.enum(["none", "right", "bottom"]).optional(),
+          gridlines: z.boolean().optional(),
+        })
+        .optional(),
+      image: z.object({ fit: z.enum(["cover", "contain"]).optional() }).optional(),
+      title: z.object({ align: z.enum(["left", "center", "right"]).optional() }).optional(),
+    })
+    .optional(),
 });
 type SlideSpec = z.infer<typeof SlideSpecZ>;
 
@@ -174,47 +275,64 @@ Hard rules:
 /** Offline fallback SlideSpec (no AI) */
 function fallbackSpec(prompt: string): SlideSpec {
   return {
-    meta: { version: "1.0", locale: "en-US", theme: "Clean", aspectRatio: "16:9" },
+    meta: {
+      version: "1.0",
+      locale: "en-US",
+      theme: "Clean",
+      aspectRatio: "16:9",
+    },
     content: {
       title: { id: "title", text: prompt?.trim() ? prompt : "AI-Powered Slide in Seconds" },
       subtitle: { id: "subtitle", text: "plzfixthx — preview & export" },
-      bullets: [{ id: "b1", items: [
-        { text: "Type a prompt; get a polished slide", level: 1 },
-        { text: "Live preview in browser", level: 1 },
-        { text: "Download a .pptx", level: 1 }
-      ]}],
-      callouts: [{ id: "c1", text: "Preview ≤ 3s, Export ≤ 10s", variant: "success" }]
+      bullets: [
+        {
+          id: "b1",
+          items: [
+            { text: "Type a prompt; get a polished slide", level: 1 },
+            { text: "Live preview in browser", level: 1 },
+            { text: "Download a .pptx", level: 1 },
+          ],
+        },
+      ],
+      callouts: [{ id: "c1", text: "Preview ≤ 3s, Export ≤ 10s", variant: "success" }],
     },
     layout: {
       grid: { rows: 8, cols: 12, gutter: 8, margin: { t: 24, r: 24, b: 24, l: 24 } },
       regions: [
         { name: "header", rowStart: 1, colStart: 1, rowSpan: 2, colSpan: 12 },
-        { name: "body",   rowStart: 3, colStart: 1, rowSpan: 5, colSpan: 8 },
-        { name: "aside",  rowStart: 3, colStart: 9, rowSpan: 5, colSpan: 4 }
+        { name: "body", rowStart: 3, colStart: 1, rowSpan: 5, colSpan: 8 },
+        { name: "aside", rowStart: 3, colStart: 9, rowSpan: 5, colSpan: 4 },
       ],
       anchors: [
         { refId: "title", region: "header", order: 0 },
         { refId: "subtitle", region: "header", order: 1 },
         { refId: "b1", region: "body", order: 0 },
-        { refId: "c1", region: "aside", order: 0 }
-      ]
+        { refId: "c1", region: "aside", order: 0 },
+      ],
     },
     styleTokens: {
-      palette: { primary: "#2563EB", accent: "#F59E0B", neutral: ["#0F172A","#1E293B","#334155","#64748B","#94A3B8","#CBD5E1","#E2E8F0"] },
+      palette: {
+        primary: "#2563EB",
+        accent: "#F59E0B",
+        neutral: ["#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0"],
+      },
       typography: {
         fonts: { sans: "Inter, Arial, sans-serif" },
         sizes: { "step_-2": 12, "step_-1": 14, step_0: 16, step_1: 20, step_2: 24, step_3: 32 },
         weights: { regular: 400, medium: 500, semibold: 600, bold: 700 },
-        lineHeights: { compact: 1.2, standard: 1.5 }
+        lineHeights: { compact: 1.2, standard: 1.5 },
       },
-      spacing: { base: 4, steps: [0,4,8,12,16,24,32] },
+      spacing: { base: 4, steps: [0, 4, 8, 12, 16, 24, 32] },
       radii: { sm: 2, md: 6, lg: 12 },
-      shadows: { sm: "0 1px 2px rgba(0,0,0,.06)", md: "0 4px 8px rgba(0,0,0,.12)", lg: "0 12px 24px rgba(0,0,0,.18)" },
-      contrast: { minTextContrast: 4.5, minUiContrast: 3 }
-    }
+      shadows: {
+        sm: "0 1px 2px rgba(0,0,0,.06)",
+        md: "0 4px 8px rgba(0,0,0,.12)",
+        lg: "0 12px 24px rgba(0,0,0,.18)",
+      },
+      contrast: { minTextContrast: 4.5, minUiContrast: 3 },
+    },
   };
 }
-
 
 /** AI adapter (OpenAI-compatible HTTP). Returns SlideSpec or throws. */
 async function callVendor(prompt: string): Promise<SlideSpec> {
@@ -227,7 +345,7 @@ async function callVendor(prompt: string): Promise<SlideSpec> {
     return fallbackSpec(prompt);
   }
 
-  // Use enhanced AI calling with retry logic
+  // Use enhanced AI calling with retry logic (json-schema aware inside helper)
   const result = await callAIWithRetry(prompt, key, base, model, SlideSpecZ);
 
   // Post-process and enhance the result
@@ -237,77 +355,80 @@ async function callVendor(prompt: string): Promise<SlideSpec> {
 }
 
 /** POST /generateSlideSpec {prompt} -> {spec} */
-export const generateSlideSpec = onRequest({ cors: false, secrets: [AI_API_KEY, AI_BASE_URL, AI_MODEL] }, (req, res) => {
-  cors(req, res, async () => {
-    if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+export const generateSlideSpec = onRequest(
+  { cors: false, secrets: [AI_API_KEY, AI_BASE_URL, AI_MODEL] },
+  (req, res) => {
+    cors(req, res, async () => {
+      if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
 
-    const startTime = Date.now();
-    const memoryBefore = process.memoryUsage().heapUsed / 1024 / 1024;
+      const startTime = Date.now();
+      const memoryBefore = process.memoryUsage().heapUsed / 1024 / 1024;
 
-    try {
-      // Sanitize and validate prompt
-      const rawPrompt = (req.body?.prompt ?? "").toString();
-      const prompt = sanitizePrompt(rawPrompt, 800);
+      try {
+        // Sanitize and validate prompt
+        const rawPrompt = (req.body?.prompt ?? "").toString();
+        const prompt = sanitizePrompt(rawPrompt, 800);
 
-      logger.info("📝 Spec generation started", {
-        promptLength: prompt.length,
-        timestamp: new Date().toISOString()
-      });
-
-      // Content moderation
-      const moderation = moderateContent(prompt);
-      if (!moderation.safe) {
-        logger.warn("⚠️ Content moderation rejected", {
-          reason: moderation.reason,
-          timestamp: new Date().toISOString()
+        logger.info("📝 Spec generation started", {
+          promptLength: prompt.length,
+          timestamp: new Date().toISOString(),
         });
-        return res.status(400).json({
-          error: moderation.reason || "Content not allowed",
-          spec: fallbackSpec("Content moderation failed")
+
+        // Content moderation
+        const moderation = moderateContent(prompt);
+        if (!moderation.safe) {
+          logger.warn("⚠️ Content moderation rejected", {
+            reason: moderation.reason,
+            timestamp: new Date().toISOString(),
+          });
+          return res.status(400).json({
+            error: moderation.reason || "Content not allowed",
+            spec: fallbackSpec("Content moderation failed"),
+          });
+        }
+
+        // Generate slide spec
+        const spec = await callVendor(prompt);
+
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+        const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
+
+        logger.info("✅ Spec generation completed", {
+          durationMs: duration,
+          memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
+          hasTitle: !!spec.content.title,
+          hasSubtitle: !!spec.content.subtitle,
+          hasBullets: !!spec.content.bullets,
+          hasDataViz: !!spec.content.dataViz,
+          aspectRatio: spec.meta.aspectRatio,
+          timestamp: new Date().toISOString(),
+        });
+
+        res.status(200).json({ spec });
+      } catch (e: any) {
+        const endTime = Date.now();
+        const duration = endTime - startTime;
+        const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
+
+        logger.error("❌ Spec generation failed", {
+          error: e.message || String(e),
+          stack: e.stack,
+          durationMs: duration,
+          memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
+          timestamp: new Date().toISOString(),
+        });
+
+        // Return fallback spec on error
+        const fallback = fallbackSpec(req.body?.prompt || "");
+        res.status(200).json({
+          spec: fallback,
+          warning: "Using fallback due to error: " + e.message,
         });
       }
-
-      // Generate slide spec
-      const spec = await callVendor(prompt);
-
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-      const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
-
-      logger.info("✅ Spec generation completed", {
-        durationMs: duration,
-        memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
-        hasTitle: !!spec.content.title,
-        hasSubtitle: !!spec.content.subtitle,
-        hasBullets: !!spec.content.bullets,
-        hasDataViz: !!spec.content.dataViz,
-        aspectRatio: spec.meta.aspectRatio,
-        timestamp: new Date().toISOString()
-      });
-
-      res.status(200).json({ spec });
-    } catch (e: any) {
-      const endTime = Date.now();
-      const duration = endTime - startTime;
-      const memoryAfter = process.memoryUsage().heapUsed / 1024 / 1024;
-
-      logger.error("❌ Spec generation failed", {
-        error: e.message || String(e),
-        stack: e.stack,
-        durationMs: duration,
-        memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
-        timestamp: new Date().toISOString()
-      });
-
-      // Return fallback spec on error
-      const fallback = fallbackSpec(req.body?.prompt || "");
-      res.status(200).json({
-        spec: fallback,
-        warning: "Using fallback due to error: " + e.message
-      });
-    }
-  });
-});
+    });
+  }
+);
 
 /** POST /exportPPTX {spec} or {specs: []} -> .pptx binary */
 export const exportPPTX = onRequest({ cors: false }, (req, res) => {
@@ -323,18 +444,46 @@ export const exportPPTX = onRequest({ cors: false }, (req, res) => {
       let specs: any[];
 
       if (body?.specs && Array.isArray(body.specs)) {
-        // Multiple slides
-        specs = body.specs.map((s: any) => SlideSpecZ.parse(s));
+        // Multiple slides - sanitize before parsing
+        specs = body.specs.map((s: any) => {
+          // Sanitize palette before validation
+          if (s?.styleTokens?.palette?.neutral) {
+            const hexPattern = /^#[0-9A-Fa-f]{6}$/;
+            s.styleTokens.palette.neutral = (s.styleTokens.palette.neutral as (string | null | undefined)[])
+              .filter((color: any): color is string => color != null && typeof color === 'string' && hexPattern.test(color))
+              .slice(0, 9);
+            if (s.styleTokens.palette.neutral.length < 5) {
+              s.styleTokens.palette.neutral = [
+                "#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8",
+                "#CBD5E1", "#E2E8F0", "#F1F5F9", "#F8FAFC"
+              ];
+            }
+          }
+          return SlideSpecZ.parse(s);
+        });
       } else if (body?.spec) {
-        // Single slide (backward compatibility)
-        specs = [SlideSpecZ.parse(body.spec)];
+        // Single slide (backward compatibility) - sanitize before parsing
+        const spec = body.spec;
+        if (spec?.styleTokens?.palette?.neutral) {
+          const hexPattern = /^#[0-9A-Fa-f]{6}$/;
+          spec.styleTokens.palette.neutral = (spec.styleTokens.palette.neutral as (string | null | undefined)[])
+            .filter((color: any): color is string => color != null && typeof color === 'string' && hexPattern.test(color))
+            .slice(0, 9);
+          if (spec.styleTokens.palette.neutral.length < 5) {
+            spec.styleTokens.palette.neutral = [
+              "#0F172A", "#1E293B", "#334155", "#64748B", "#94A3B8",
+              "#CBD5E1", "#E2E8F0", "#F1F5F9", "#F8FAFC"
+            ];
+          }
+        }
+        specs = [SlideSpecZ.parse(spec)];
       } else {
         throw new Error("Missing spec or specs in request body");
       }
 
       logger.info("📊 Export started", {
         slideCount: specs.length,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
       const buf = await buildPptx(specs);
@@ -350,11 +499,17 @@ export const exportPPTX = onRequest({ cors: false }, (req, res) => {
         bufferSizeMB: bufferSize.toFixed(2),
         memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
         withinBudget: duration <= 1500 && memoryAfter <= 300,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
-      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.presentationml.presentation");
-      res.setHeader("Content-Disposition", `attachment; filename="plzfixthx-presentation.pptx"`);
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="plzfixthx-presentation.pptx"`
+      );
       res.status(200).send(Buffer.from(buf));
     } catch (e: any) {
       const endTime = Date.now();
@@ -366,7 +521,7 @@ export const exportPPTX = onRequest({ cors: false }, (req, res) => {
         stack: e.stack,
         durationMs: duration,
         memoryUsedMB: (memoryAfter - memoryBefore).toFixed(2),
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
 
       res.status(400).send(`Export error: ${e.message || String(e)}`);
@@ -375,7 +530,9 @@ export const exportPPTX = onRequest({ cors: false }, (req, res) => {
 });
 
 /** PPTX builder - supports single or multiple slides */
-async function buildPptx(specs: SlideSpec | SlideSpec[]): Promise<ArrayBuffer> {
+async function buildPptx(
+  specs: SlideSpec | SlideSpec[]
+): Promise<ArrayBuffer> {
   const specsArray = Array.isArray(specs) ? specs : [specs];
   if (specsArray.length === 0) {
     throw new Error("No slides to export");
@@ -393,44 +550,29 @@ async function buildPptx(specs: SlideSpec | SlideSpec[]): Promise<ArrayBuffer> {
   return pptx.write({ outputType: "arraybuffer" }) as Promise<ArrayBuffer>;
 }
 
-/** Build a single slide with header and subtitle */
+/** Build a single slide using the universal builder */
 async function buildSlide(pptx: PptxGenJS, spec: SlideSpec): Promise<void> {
   logger.info("🏗️ Building slide", {
     hasTitle: !!spec.content.title,
     hasSubtitle: !!spec.content.subtitle,
-    aspectRatio: spec.meta.aspectRatio
+    aspectRatio: spec.meta.aspectRatio,
   });
 
   try {
-    // Extract header and subtitle from spec
-    const header = spec.content.title?.text || "Slide";
-    const subtitle = spec.content.subtitle?.text || "";
-    const color = spec.styleTokens.palette.primary || "#6366F1";
-
-    // Build header-only slide
-    await buildHeaderOnlySlide(pptx, {
-      header,
-      subtitle,
-      color
-    });
+    // Universal builder renders title, subtitle, bullets, callouts, charts, images per grid
+    await buildSlideFromSpec(pptx, spec as any);
 
     logger.info("✅ Slide built successfully", {
-      headerLength: header.length,
-      subtitleLength: subtitle.length
+      title: spec.content.title?.text?.substring(0, 60) || "Untitled",
     });
   } catch (error) {
     logger.error("❌ Slide build failed", {
       error: String(error),
       spec: {
         title: spec.content.title?.text?.substring(0, 50),
-        aspectRatio: spec.meta.aspectRatio
-      }
+        aspectRatio: spec.meta.aspectRatio,
+      },
     });
     throw error;
   }
 }
-
-
-
-
-
