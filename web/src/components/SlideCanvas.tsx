@@ -434,10 +434,12 @@ const Chart = memo(function Chart({ spec, tokens }: { spec: SlideSpecV1; tokens:
     width: "100%",
     height: "100%",
     minHeight: 200,
-    backgroundColor: tokens.palette.neutral[6] ?? "#E2E8F0",
-    borderRadius: 8,
-    padding: 8,
+    backgroundColor: "white", // Professional white background for charts
+    borderRadius: 12,
+    padding: 16,
     boxSizing: "border-box",
+    border: `1px solid ${tokens.palette.neutral[6] ?? "#E2E8F0"}`,
+    boxShadow: "0 2px 8px rgba(0,0,0,0.04)", // Subtle shadow for depth
   };
 
   if (!data.length || !series.length) {
@@ -449,21 +451,49 @@ const Chart = memo(function Chart({ spec, tokens }: { spec: SlideSpecV1; tokens:
       return (
         <div style={frameStyle} aria-label="Bar chart">
           <ResponsiveContainer>
-            <BarChart data={data}>
-              <CartesianGrid stroke={hexWithAlpha(tokens.palette.neutral[5] ?? "#94A3B8", showGrid ? 0.4 : 0)} vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: tokens.palette.neutral[3] }} />
-              <YAxis tick={{ fill: tokens.palette.neutral[3] }} tickFormatter={fmt} />
-              <Tooltip formatter={(v: any) => fmt(Number(v))} />
+            <BarChart data={data} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+              <CartesianGrid
+                stroke={tokens.palette.neutral[7] ?? "#E2E8F0"}
+                strokeDasharray="3 3"
+                vertical={false}
+                strokeOpacity={0.5}
+              />
+              <XAxis
+                dataKey="label"
+                tick={{ fill: tokens.palette.neutral[3], fontSize: 11, fontFamily: 'Aptos, system-ui, sans-serif' }}
+                axisLine={{ stroke: tokens.palette.neutral[6] }}
+              />
+              <YAxis
+                tick={{ fill: tokens.palette.neutral[3], fontSize: 11, fontFamily: 'Aptos, system-ui, sans-serif' }}
+                tickFormatter={fmt}
+                axisLine={{ stroke: tokens.palette.neutral[6] }}
+              />
+              <Tooltip
+                formatter={(v: any) => fmt(Number(v))}
+                contentStyle={{
+                  backgroundColor: 'white',
+                  border: `1px solid ${tokens.palette.neutral[6]}`,
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontFamily: 'Aptos, system-ui, sans-serif'
+                }}
+              />
               {series.map((s, i) => (
                 <Bar
                   key={s.name}
                   dataKey={s.name}
                   fill={colors[i % colors.length]}
-                  radius={4}
-                  label={viz.valueFormat ? { formatter: (v: any) => fmt(Number(v)), position: "top" as const } : undefined}
+                  radius={[6, 6, 0, 0]}
+                  label={viz.valueFormat ? {
+                    formatter: (v: any) => fmt(Number(v)),
+                    position: "top" as const,
+                    fill: tokens.palette.neutral[2],
+                    fontSize: 10,
+                    fontFamily: 'Aptos, system-ui, sans-serif'
+                  } : undefined}
                 />
               ))}
-              {showLegend && <Legend {...legendProps} />}
+              {showLegend && <Legend {...legendProps} wrapperStyle={{ fontSize: 11, fontFamily: 'Aptos, system-ui, sans-serif' }} />}
             </BarChart>
           </ResponsiveContainer>
         </div>

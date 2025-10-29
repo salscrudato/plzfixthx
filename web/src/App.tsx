@@ -25,6 +25,12 @@ export default function App() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(true);
 
+  // Professional prompt validation
+  const MAX_PROMPT_LENGTH = 500;
+  const MIN_PROMPT_LENGTH = 10;
+  const charCount = prompt.length;
+  const isPromptValid = charCount >= MIN_PROMPT_LENGTH && charCount <= MAX_PROMPT_LENGTH;
+
   useEffect(() => {
     if (spec) {
       setSpecs((prev) => [...prev, spec]);
@@ -39,10 +45,25 @@ export default function App() {
   }, [error]);
 
   const handleGenerate = useCallback(async () => {
-    if (!prompt.trim()) return;
+    const trimmedPrompt = prompt.trim();
+
+    // Validation
+    if (!trimmedPrompt) {
+      setErrorMsg("Please enter a prompt to generate a slide");
+      return;
+    }
+    if (trimmedPrompt.length < MIN_PROMPT_LENGTH) {
+      setErrorMsg(`Prompt too short. Please provide at least ${MIN_PROMPT_LENGTH} characters for better results.`);
+      return;
+    }
+    if (trimmedPrompt.length > MAX_PROMPT_LENGTH) {
+      setErrorMsg(`Prompt too long. Please keep it under ${MAX_PROMPT_LENGTH} characters.`);
+      return;
+    }
+
     setErrorMsg(null);
     setShowSuggestions(false);
-    await generate(prompt);
+    await generate(trimmedPrompt);
   }, [prompt, generate]);
 
   // Keyboard shortcut: Ctrl+Enter or Cmd+Enter
@@ -110,11 +131,16 @@ export default function App() {
         <main id="main-content" className="max-w-4xl mx-auto w-full px-4 sm:px-6">
           <div className="glass rounded-[var(--radius-2xl)] p-6 sm:p-8 space-y-4 border border-white/10 backdrop-blur-xl shadow-lg transition-all duration-500">
             <div className="space-y-2 mb-4">
-              <label htmlFor="slide-prompt" className="block text-sm font-medium text-[var(--neutral-2)]">
-                Describe your slide
-              </label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="slide-prompt" className="block text-sm font-medium text-[var(--neutral-2)]">
+                  Describe your slide
+                </label>
+                <span className={`text-xs font-medium ${charCount > MAX_PROMPT_LENGTH ? 'text-red-500' : charCount > MAX_PROMPT_LENGTH * 0.8 ? 'text-amber-500' : 'text-[var(--neutral-4)]'}`}>
+                  {charCount}/{MAX_PROMPT_LENGTH}
+                </span>
+              </div>
               <p className="text-xs text-[var(--neutral-4)]">
-                Be specific about content, style, or data you want to include
+                Be specific about content, style, or data you want to include (min {MIN_PROMPT_LENGTH} characters)
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -122,20 +148,22 @@ export default function App() {
                 id="slide-prompt"
                 type="text"
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+                onChange={(e) => setPrompt(e.target.value.slice(0, MAX_PROMPT_LENGTH))}
+                onKeyDown={(e) => e.key === "Enter" && isPromptValid && !loading && handleGenerate()}
                 placeholder="e.g., 'Q3 revenue growth strategy with 3 key initiatives and bar chart'"
                 disabled={loading}
+                maxLength={MAX_PROMPT_LENGTH}
                 aria-label="Slide prompt input"
                 aria-describedby="prompt-help"
                 className="flex-1 px-4 py-3 rounded-[var(--radius-md)] bg-[var(--neutral-8)] text-[var(--neutral-1)] placeholder-[var(--neutral-4)] border border-[var(--neutral-6)] focus:outline-none focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/20 disabled:opacity-50 transition-all duration-200 min-h-[44px]"
               />
               <button
                 onClick={handleGenerate}
-                disabled={loading || !prompt.trim()}
+                disabled={loading || !isPromptValid}
                 aria-label={loading ? "Generating slide" : "Generate slide"}
                 aria-busy={loading}
-                className="px-6 py-3 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] font-semibold hover:shadow-lg hover:opacity-90 disabled:opacity-50 transition-all duration-200 flex items-center justify-center gap-2 whitespace-nowrap transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:ring-offset-2 min-h-[44px] sm:w-auto w-full"
+                title={!isPromptValid ? `Prompt must be ${MIN_PROMPT_LENGTH}-${MAX_PROMPT_LENGTH} characters` : ''}
+                className="px-6 py-3 bg-[var(--color-primary)] text-white rounded-[var(--radius-md)] font-semibold hover:shadow-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2 whitespace-nowrap transform hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:ring-offset-2 min-h-[44px] sm:w-auto w-full"
               >
                 {loading ? (
                   <>

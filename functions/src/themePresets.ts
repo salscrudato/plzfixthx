@@ -82,6 +82,50 @@ export const THEME_PRESETS: Record<string, ThemePreset> = {
     ],
     description: "Elegant, premium, sophisticated",
   },
+
+  mckinsey: {
+    name: "McKinsey",
+    primary: "#005EB8", // McKinsey blue
+    accent: "#00A3E0", // Light blue accent
+    neutral: [
+      "#0F172A", "#1E293B", "#334155", "#475569", "#64748B",
+      "#94A3B8", "#CBD5E1", "#E2E8F0", "#F8FAFC",
+    ],
+    description: "Classic consulting, authoritative, strategic",
+  },
+
+  bcg: {
+    name: "BCG",
+    primary: "#009639", // BCG green
+    accent: "#F7941D", // Orange accent
+    neutral: [
+      "#0F172A", "#1E293B", "#334155", "#475569", "#64748B",
+      "#94A3B8", "#CBD5E1", "#E2E8F0", "#F8FAFC",
+    ],
+    description: "Bold, innovative, growth-focused",
+  },
+
+  bain: {
+    name: "Bain",
+    primary: "#C8102E", // Bain red
+    accent: "#003DA5", // Blue accent
+    neutral: [
+      "#0F172A", "#1E293B", "#334155", "#475569", "#64748B",
+      "#94A3B8", "#CBD5E1", "#E2E8F0", "#F8FAFC",
+    ],
+    description: "Dynamic, results-driven, impactful",
+  },
+
+  minimal: {
+    name: "Minimal",
+    primary: "#1E293B", // Slate
+    accent: "#64748B", // Gray accent
+    neutral: [
+      "#0F172A", "#1E293B", "#334155", "#475569", "#64748B",
+      "#94A3B8", "#CBD5E1", "#E2E8F0", "#F8FAFC",
+    ],
+    description: "Clean, understated, professional",
+  },
 };
 
 /**
