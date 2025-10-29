@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { apiGenerate } from "@/lib/api";
 import { normalizeOrFallback } from "@/lib/validation";
 import { logger } from "@/lib/logger";
-import type { SlideSpecV1 } from "@/types/SlideSpecV1";
+import type { SlideSpecV1 } from "@plzfixthx/slide-spec";
 
 export function useSlideGeneration() {
   const [loading, setLoading] = useState(false);

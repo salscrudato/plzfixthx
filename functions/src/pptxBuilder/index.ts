@@ -76,7 +76,13 @@ export async function createPptxFromSpecs(
 
   pptx.layout = pptxLayoutByAspectRatio(arr[0].meta.aspectRatio);
 
-  // Defer to the universal builder (already handles all content types).
+  // Set default metadata for the deck (executive master)
+  pptx.author = "plzfixthx";
+  pptx.company = "Professional Slides";
+  pptx.subject = arr[0].meta.theme || "Professional Presentation";
+  pptx.title = arr[0].content.title?.text || "Presentation";
+
+  // Build all slides in single pptx instance (no merge/chunk artifacts)
   for (const spec of arr) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (await import("./headerOnlyBuilder")).buildSlideFromSpec(pptx, spec as any);

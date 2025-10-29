@@ -4,8 +4,8 @@
  * Ensures React preview matches PPTX output pixel-for-pixel through unified style definitions.
  */
 
-import type { SlideSpecV1 } from "@/types/SlideSpecV1";
-import { PX_PER_INCH } from "./shared";
+import type { SlideSpecV1 } from "@plzfixthx/slide-spec";
+import { PX_PER_INCH } from "@plzfixthx/slide-spec";
 
 /* -------------------------------------------------------------------------- */
 /*                            Unit Conversions                                */

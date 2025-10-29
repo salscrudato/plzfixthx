@@ -1,12 +1,11 @@
 import { initializeApp } from "firebase/app";
-import { getAnalytics, isSupported } from "firebase/analytics";
 
-/** Provided config (unchanged) */
+/** Firebase config - updated to match .firebaserc */
 const firebaseConfig = {
   apiKey: "AIzaSyAFFyRB7F7LHNVraB5xL7zSunVPa7zbq9E",
-  authDomain: "pls-fix-thx.firebaseapp.com",
-  projectId: "pls-fix-thx",
-  storageBucket: "pls-fix-thx.firebasestorage.app",
+  authDomain: "plsfixthx-ai-2025.firebaseapp.com",
+  projectId: "plsfixthx-ai-2025",
+  storageBucket: "plsfixthx-ai-2025.firebasestorage.app",
   messagingSenderId: "684982102967",
   appId: "1:684982102967:web:ede742c0e2e5d497c61632",
   measurementId: "G-04FXJHYHCS"
@@ -14,13 +13,10 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
-// Analytics optional; safe-check for SSR/emulator
+// Analytics disabled to avoid permissions errors
+// Can be re-enabled when Firebase Installations API is properly configured
 export async function initAnalytics() {
-  try {
-    if (typeof window !== "undefined" && (await isSupported())) {
-      return getAnalytics(app);
-    }
-  } catch {}
+  // Analytics disabled
   return null;
 }
 

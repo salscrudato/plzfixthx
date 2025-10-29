@@ -6,7 +6,7 @@ import { useSlideGeneration } from "@/hooks/useSlideGeneration";
 import { useSlideGenerationStream } from "@/hooks/useSlideGenerationStream";
 import { useSlideExport, type ExportFormat } from "@/hooks/useSlideExport";
 import { isStreamingEnabled } from "@/lib/env";
-import type { SlideSpecV1 } from "@/types/SlideSpecV1";
+import type { SlideSpecV1 } from "@plzfixthx/slide-spec";
 import { Download, FileText, Image } from "lucide-react";
 
 export default function App() {

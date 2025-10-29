@@ -368,4 +368,135 @@ export declare function normalizePalette(p: SlideSpecV1["styleTokens"]["palette"
     accent: string;
     neutral: string[];
 };
+/**
+ * Convert hex color to RGB tuple
+ * @param hex - Hex color string (e.g., "#FF0000")
+ * @returns [r, g, b] tuple with values 0-255
+ */
+export declare function hexToRgb(hex: string): [number, number, number];
+/**
+ * Convert RGB to hex color
+ * @param r - Red (0-255)
+ * @param g - Green (0-255)
+ * @param b - Blue (0-255)
+ * @returns Hex color string
+ */
+export declare function rgbToHex(r: number, g: number, b: number): string;
+/**
+ * Calculate relative luminance per WCAG 2.2
+ * @param hex - Hex color string
+ * @returns Luminance value (0-1)
+ */
+export declare function getLuminance(hex: string): number;
+/**
+ * Calculate contrast ratio per WCAG 2.2
+ * @param hex1 - First hex color
+ * @param hex2 - Second hex color
+ * @returns Contrast ratio (1-21)
+ */
+export declare function contrastRatio(hex1: string, hex2: string): number;
+/**
+ * Validate hex color format
+ * @param color - Color string to validate
+ * @returns True if valid 6-digit hex
+ */
+export declare function isValidHex(color: string): boolean;
+/**
+ * Convert opacity (0-1) to PPTX transparency (0-100)
+ * @param opacity - Opacity value (0-1)
+ * @returns PPTX transparency value (0-100)
+ */
+export declare function opacityToTransparency(opacity: number): number;
+/**
+ * Convert PPTX transparency (0-100) to opacity (0-1)
+ * @param transparency - PPTX transparency value (0-100)
+ * @returns Opacity value (0-1)
+ */
+export declare function transparencyToOpacity(transparency: number): number;
+/**
+ * Add alpha transparency to hex color (for CSS/frontend use)
+ * @param hex - Hex color string
+ * @param alpha - Alpha value (0-1)
+ * @returns Hex color with alpha (8-digit)
+ */
+export declare function hexWithAlpha(hex: string, alpha: number): string;
+/**
+ * Pixel to inch conversion (96 DPI standard)
+ */
+export declare const PX_PER_INCH = 96;
+/**
+ * Convert pixels to inches
+ * @param px - Pixel value
+ * @returns Inch value
+ */
+export declare function pxToIn(px: number): number;
+/**
+ * Convert inches to pixels
+ * @param inches - Inch value
+ * @returns Pixel value
+ */
+export declare function inToPx(inches: number): number;
+/**
+ * Truncate text with ellipsis
+ * @param text - Text to truncate
+ * @param maxLength - Maximum length
+ * @returns Truncated text
+ */
+export declare function truncateWithEllipsis(text: string, maxLength: number): string;
+/**
+ * Calculate optimal font size based on available space
+ * @param text - Text to measure
+ * @param maxWidth - Maximum width in pixels
+ * @param baseFontSize - Base font size
+ * @returns Optimal font size
+ */
+export declare function calculateOptimalFontSize(text: string, maxWidth: number, baseFontSize?: number): number;
+/**
+ * Map API errors to user-friendly messages
+ * @param error - Error object or message
+ * @returns User-friendly error message
+ */
+export declare function mapErrorToMessage(error: unknown): string;
+/**
+ * Calculate grid cell dimensions
+ * @param totalWidth - Total width in inches
+ * @param totalHeight - Total height in inches
+ * @param cols - Number of columns
+ * @param rows - Number of rows
+ * @param gutter - Gutter size in inches
+ * @param margin - Margin object {t, r, b, l} in inches
+ * @returns Cell dimensions {width, height} in inches
+ */
+export declare function calculateCellDimensions(totalWidth: number, totalHeight: number, cols: number, rows: number, gutter: number, margin: {
+    t: number;
+    r: number;
+    b: number;
+    l: number;
+}): {
+    width: number;
+    height: number;
+};
+/**
+ * Calculate region position in grid
+ * @param rowStart - Starting row (1-indexed)
+ * @param colStart - Starting column (1-indexed)
+ * @param rowSpan - Number of rows to span
+ * @param colSpan - Number of columns to span
+ * @param cellWidth - Width of each cell in inches
+ * @param cellHeight - Height of each cell in inches
+ * @param gutter - Gutter size in inches
+ * @param margin - Margin object in inches
+ * @returns Position {x, y, width, height} in inches
+ */
+export declare function calculateRegionPosition(rowStart: number, colStart: number, rowSpan: number, colSpan: number, cellWidth: number, cellHeight: number, gutter: number, margin: {
+    t: number;
+    r: number;
+    b: number;
+    l: number;
+}): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+};
 //# sourceMappingURL=index.d.ts.map

@@ -15,11 +15,26 @@ import {
   enhanceSlideSpec,
 } from "./aiHelpers";
 
+// Import orchestrator
+import { processAIRequest } from "./middleware/aiOrchestrator";
+
 // Import security utilities
 import { getRequestId } from "./security";
 
 // Import PPTX builders (lazy-loaded for efficiency)
 import { createPptxFromSpecs } from "./pptxBuilder";
+
+// Import HTTP helpers
+import {
+  setPptxHeaders,
+  setSSEHeaders,
+  setCorsHeaders,
+  sendError,
+  sendSuccess,
+} from "./httpHelpers";
+
+// Import fallback spec factory
+import { createFallbackSpec } from "./fallbackSpec";
 
 // Define secrets and params
 const AI_API_KEY = defineSecret("AI_API_KEY");
@@ -47,72 +62,6 @@ try {
 const db = getFirestore();
 const rateLimitCollection = "rate_limits";
 
-// Offline fallback SlideSpec (enhanced with McKinsey-style MECE)
-function fallbackSpec(prompt: string): SlideSpec {
-  return {
-    meta: {
-      version: "1.0",
-      locale: "en-US",
-      theme: "Executive",
-      aspectRatio: "16:9",
-    },
-    design: {
-      pattern: "minimal",
-      whitespace: { strategy: "balanced", breathingRoom: 0.35 },
-    },
-    content: {
-      title: { id: "title", text: prompt?.trim() ? prompt : "Strategic Overview" },
-      subtitle: { id: "subtitle", text: "Key Insights and Recommendations" },
-      bullets: [
-        {
-          id: "b1",
-          items: [
-            { text: "Situation: Analyze current state", level: 1 },
-            { text: "Complication: Identify challenges", level: 1 },
-            { text: "Resolution: Propose actions", level: 1 },
-          ],
-        },
-      ],
-      callouts: [{ id: "c1", variant: "note", text: "AI generation fallback - refine prompt for better results" }],
-    },
-    layout: {
-      grid: { rows: 10, cols: 12, gutter: 12, margin: { t: 40, r: 40, b: 40, l: 40 } },
-      regions: [
-        { name: "header", rowStart: 1, colStart: 1, rowSpan: 2, colSpan: 12 },
-        { name: "body", rowStart: 3, colStart: 1, rowSpan: 7, colSpan: 8 },
-        { name: "aside", rowStart: 3, colStart: 9, rowSpan: 7, colSpan: 4 },
-      ],
-      anchors: [
-        { refId: "title", region: "header", order: 0 },
-        { refId: "subtitle", region: "header", order: 1 },
-        { refId: "b1", region: "body", order: 0 },
-        { refId: "c1", region: "aside", order: 0 },
-      ],
-    },
-    styleTokens: {
-      palette: {
-        primary: "#005EB8", // McKinsey blue
-        accent: "#F3C13A", // McKinsey gold
-        neutral: ["#0F172A", "#1E293B", "#334155", "#475569", "#64748B", "#94A3B8", "#CBD5E1", "#E2E8F0", "#F8FAFC"],
-      },
-      typography: {
-        fonts: { sans: "Aptos, Calibri, Arial, sans-serif" },
-        sizes: { "step_-2": 12, "step_-1": 14, step_0: 16, step_1: 20, step_2: 24, step_3: 44 },
-        weights: { regular: 400, medium: 500, semibold: 600, bold: 700 },
-        lineHeights: { compact: 1.2, standard: 1.5 },
-      },
-      spacing: { base: 4, steps: [0, 4, 8, 12, 16, 24, 32, 48, 64] },
-      radii: { sm: 4, md: 8, lg: 16 },
-      shadows: {
-        sm: "0 2px 4px rgba(0,0,0,.08)",
-        md: "0 4px 12px rgba(0,0,0,.12)",
-        lg: "0 12px 32px rgba(0,0,0,.16)",
-      },
-      contrast: { minTextContrast: 7, minUiContrast: 4.5 },
-    },
-  };
-}
-
 /** AI adapter with model fallback */
 async function callVendor(prompt: string): Promise<SlideSpec> {
   const key = AI_API_KEY.value() ?? "";
@@ -121,7 +70,7 @@ async function callVendor(prompt: string): Promise<SlideSpec> {
 
   if (!key) {
     logger.warn("AI_API_KEY not set — using fallback");
-    return fallbackSpec(prompt);
+    return createFallbackSpec(prompt);
   }
 
   let lastError: Error | null = null;
@@ -136,7 +85,7 @@ async function callVendor(prompt: string): Promise<SlideSpec> {
   }
 
   logger.error("All AI models failed", { error: lastError?.message });
-  return fallbackSpec(prompt);
+  return createFallbackSpec(prompt);
 }
 
 /** Rate limiter (IP-based) */
@@ -166,10 +115,20 @@ async function checkRateLimit(ip: string): Promise<boolean> {
 export const generateSlideSpec = onRequest(
   { cors: true, secrets: [AI_API_KEY, AI_BASE_URL, AI_MODEL_PRIMARY, AI_MODEL_FALLBACK, RATE_LIMIT_MIN] },
   async (req, res) => {
+    // Handle OPTIONS preflight request explicitly
+    if (req.method === "OPTIONS") {
+      setCorsHeaders(res, req.headers.origin);
+      res.status(204).send("");
+      return;
+    }
+
     if (req.method !== "POST") {
       res.status(405).send("Method Not Allowed");
       return;
     }
+
+    // Set CORS headers for actual request
+    setCorsHeaders(res, req.headers.origin);
 
     const startTime = Date.now();
     const memoryBefore = process.memoryUsage().heapUsed / 1024 / 1024;
@@ -202,7 +161,7 @@ export const generateSlideSpec = onRequest(
         logger.warn("⚠️ Content moderation rejected", { reason: moderation.reason, ip });
         res.status(400).json({
           error: moderation.reason || "Content not allowed",
-          spec: fallbackSpec("Content moderation failed"),
+          spec: createFallbackSpec("Content moderation failed"),
         });
         return;
       }
@@ -238,7 +197,7 @@ export const generateSlideSpec = onRequest(
         timestamp: new Date().toISOString(),
       });
 
-      const fallback = fallbackSpec(req.body?.prompt || "");
+      const fallback = createFallbackSpec(req.body?.prompt || "");
       res.status(200).json({
         spec: fallback,
         warning: "Using fallback due to error: " + e.message,
@@ -247,21 +206,25 @@ export const generateSlideSpec = onRequest(
   }
 );
 
-/** POST /generateSlideSpecStream {prompt} -> SSE stream with progress */
+/** GET/POST /generateSlideSpecStream?prompt=... -> SSE stream with progress */
 export const generateSlideSpecStream = onRequest(
   { cors: true, secrets: [AI_API_KEY, AI_BASE_URL, AI_MODEL_PRIMARY, AI_MODEL_FALLBACK] },
   async (req, res) => {
-    if (req.method !== "POST") {
+    // Handle OPTIONS preflight request explicitly
+    if (req.method === "OPTIONS") {
+      setCorsHeaders(res, req.headers.origin);
+      res.status(204).send("");
+      return;
+    }
+
+    // Accept both GET (for EventSource) and POST
+    if (req.method !== "GET" && req.method !== "POST") {
       res.status(405).send("Method Not Allowed");
       return;
     }
 
-    // Set SSE headers
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("X-Accel-Buffering", "no"); // Disable buffering for real-time streaming
+    // Set SSE headers (includes CORS headers)
+    setSSEHeaders(res, req.headers.origin);
 
     const startTime = Date.now();
     const memoryBefore = process.memoryUsage().heapUsed / 1024 / 1024;
@@ -281,7 +244,10 @@ export const generateSlideSpecStream = onRequest(
     try {
       writeEvent("start", { status: "initializing", progress: 0 });
 
-      const rawPrompt = (req.body?.prompt ?? "").toString();
+      // Support both GET (query param) and POST (body)
+      const rawPrompt = req.method === "GET"
+        ? (req.query.prompt as string || "")
+        : (req.body?.prompt ?? "").toString();
       const prompt = sanitizePrompt(rawPrompt, 1200);
 
       writeEvent("moderation", { status: "checking", progress: 20 });
@@ -294,12 +260,47 @@ export const generateSlideSpecStream = onRequest(
         return;
       }
 
-      writeEvent("generation", { status: "generating", promptLength: prompt.length, progress: 40 });
+      // Use orchestrator for two-stage pipeline
+      writeEvent("planning", { status: "analyzing intent", progress: 30 });
 
-      const spec = await callVendor(prompt);
+      let spec: SlideSpec;
+      let isFallback = false;
 
-      writeEvent("enhancement", { status: "enhancing", progress: 80 });
-      writeEvent("spec", { spec, isFallback: false });
+      // Set up keepalive to prevent timeout during long AI processing
+      const keepaliveInterval = setInterval(() => {
+        try {
+          res.write(": keepalive\n\n");
+        } catch (e) {
+          clearInterval(keepaliveInterval);
+        }
+      }, 15000); // Send keepalive every 15 seconds
+
+      try {
+        const aiResponse = await processAIRequest({
+          prompt,
+          requestId,
+          userId: ip,
+        });
+
+        spec = aiResponse.spec;
+
+        writeEvent("generation", {
+          status: "generating",
+          model: aiResponse.model,
+          promptLength: prompt.length,
+          progress: 60,
+        });
+
+        writeEvent("enhancement", { status: "enhancing", progress: 80 });
+      } catch (error) {
+        logger.warn("AI generation failed, using fallback", { error: String(error), requestId });
+        spec = createFallbackSpec(prompt, requestId);
+        isFallback = true;
+      } finally {
+        clearInterval(keepaliveInterval);
+      }
+
+      writeEvent("spec", { spec, isFallback });
 
       const endTime = Date.now();
       const duration = endTime - startTime;
@@ -337,10 +338,20 @@ export const generateSlideSpecStream = onRequest(
 
 /** POST /exportPPTX {spec} or {specs: []} -> .pptx binary */
 export const exportPPTX = onRequest({ cors: true }, async (req, res) => {
+  // Handle OPTIONS preflight request explicitly
+  if (req.method === "OPTIONS") {
+    setCorsHeaders(res, req.headers.origin);
+    res.status(204).send("");
+    return;
+  }
+
   if (req.method !== "POST") {
     res.status(405).send("Method Not Allowed");
     return;
   }
+
+  // Set CORS headers for actual request
+  setCorsHeaders(res, req.headers.origin);
 
   const startTime = Date.now();
   const memoryBefore = process.memoryUsage().heapUsed / 1024 / 1024;
@@ -408,14 +419,8 @@ export const exportPPTX = onRequest({ cors: true }, async (req, res) => {
       timestamp: new Date().toISOString(),
     });
 
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    );
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="plzfixthx-presentation-${Date.now()}.pptx"`
-    );
+    // Set proper headers for PPTX download
+    setPptxHeaders(res);
     res.status(200).send(Buffer.from(buf));
   } catch (e: any) {
     const endTime = Date.now();
@@ -432,6 +437,62 @@ export const exportPPTX = onRequest({ cors: true }, async (req, res) => {
     });
 
     res.status(400).send(`Export error: ${e.message || String(e)}`);
+  }
+});
+
+/** GET /health - Health check endpoint for monitoring */
+export const health = onRequest({ cors: true }, async (req, res) => {
+  // Handle OPTIONS preflight request explicitly
+  if (req.method === "OPTIONS") {
+    setCorsHeaders(res, req.headers.origin);
+    res.status(204).send("");
+    return;
+  }
+
+  // Set CORS headers for actual request
+  setCorsHeaders(res, req.headers.origin);
+
+  const startTime = Date.now();
+
+  try {
+    // Check Firebase Admin SDK
+    const app = getApp();
+    const appOk = !!app;
+
+    // Check Firestore connectivity (lightweight)
+    let firestoreOk = false;
+    try {
+      await db.collection("_health").limit(1).get();
+      firestoreOk = true;
+    } catch {
+      firestoreOk = false;
+    }
+
+    const latency = Date.now() - startTime;
+    const memoryUsage = process.memoryUsage();
+
+    const health = {
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      latencyMs: latency,
+      checks: {
+        firebaseAdmin: appOk,
+        firestore: firestoreOk,
+      },
+      memory: {
+        heapUsedMB: (memoryUsage.heapUsed / 1024 / 1024).toFixed(2),
+        heapTotalMB: (memoryUsage.heapTotal / 1024 / 1024).toFixed(2),
+        rssMB: (memoryUsage.rss / 1024 / 1024).toFixed(2),
+      },
+      version: "1.0.0",
+    };
+
+    sendSuccess(res, health);
+  } catch (e: any) {
+    logger.error("Health check failed", { error: e.message });
+    sendError(res, 503, "HEALTH_CHECK_FAILED", "Service health check failed", {
+      error: e.message,
+    });
   }
 });
 

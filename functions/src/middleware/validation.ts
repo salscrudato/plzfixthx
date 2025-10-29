@@ -54,24 +54,14 @@ export function validateRequest<T>(
 }
 
 /**
- * Sanitize string input
+ * Note: sanitizeString and sanitizeFilename have been moved to httpHelpers.ts
+ * to avoid duplication. Import from there instead.
  */
-export function sanitizeString(input: string, maxLength: number = 5000): string {
-  return input
-    .trim()
-    .slice(0, maxLength)
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, ""); // Remove control characters
-}
+import { sanitizeString as sanitizeStringImpl } from "../httpHelpers";
+export { sanitizeFilename, sanitizeString } from "../httpHelpers";
 
-/**
- * Sanitize filename
- */
-export function sanitizeFilename(filename: string): string {
-  return filename
-    .replace(/[<>:"/\\|?*]/g, "-")
-    .replace(/\s+/g, "-")
-    .slice(0, 255);
-}
+// Use the imported function locally
+const sanitizeString = sanitizeStringImpl;
 
 /**
  * Validate hex color

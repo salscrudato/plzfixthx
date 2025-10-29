@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
-import type { SlideSpecV1 } from "@/types/SlideSpecV1";
+import type { SlideSpecV1 } from "@plzfixthx/slide-spec";
 import { normalizePalette, DEFAULT_TYPOGRAPHY } from "@plzfixthx/slide-spec";
-import { hexWithAlpha } from "@/lib/shared";
+import { hexWithAlpha } from "@plzfixthx/slide-spec";
 import {
   ResponsiveContainer,
   BarChart,

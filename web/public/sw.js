@@ -1,5 +1,5 @@
 // Update this version number whenever you want to force a cache refresh
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 const CACHE_NAME = `plzfixthx-v${VERSION}`;
 const RUNTIME_CACHE = `plzfixthx-runtime-v${VERSION}`;
 

@@ -1,4 +1,4 @@
-import type { SlideSpecV1 } from "@/types/SlideSpecV1";
+import type { SlideSpecV1 } from "@plzfixthx/slide-spec";
 
 /** Normalize or provide fallback slide spec */
 export function normalizeOrFallback(data: unknown): SlideSpecV1 {

@@ -8,7 +8,7 @@ import {
   validateExportBlob,
   type ExportFormat,
 } from "@/lib/exportHandler";
-import type { SlideSpecV1 } from "@/types/SlideSpecV1";
+import type { SlideSpecV1 } from "@plzfixthx/slide-spec";
 
 export { type ExportFormat } from "@/lib/exportHandler";
 

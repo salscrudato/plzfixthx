@@ -156,11 +156,23 @@ function dispatchEvent(
 
 /**
  * Parse JSON data from SSE event, with error handling
+ * Accepts either an SSEEvent object or a raw data string
  */
-export function parseSSEData<T = unknown>(event: SSEEvent): T | null {
+export function parseSSEData<T = unknown>(eventOrData: SSEEvent | string): T | null {
   try {
-    return JSON.parse(event.data) as T;
-  } catch {
+    const dataString = typeof eventOrData === 'string' ? eventOrData : eventOrData.data;
+
+    // Handle empty strings
+    if (!dataString || dataString.trim() === '') {
+      return null;
+    }
+
+    return JSON.parse(dataString) as T;
+  } catch (error) {
+    console.error('Failed to parse SSE data:', {
+      error: error instanceof Error ? error.message : String(error),
+      data: typeof eventOrData === 'string' ? eventOrData.slice(0, 100) : eventOrData.data?.slice(0, 100),
+    });
     return null;
   }
 }

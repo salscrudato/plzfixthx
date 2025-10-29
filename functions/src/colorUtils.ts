@@ -4,11 +4,11 @@
  * - Color manipulation and validation
  * - Nearest compliant color finding
  *
- * Note: Core color utilities are in shared.ts to avoid duplication
+ * Note: Core color utilities are in @plzfixthx/slide-spec to avoid duplication
  */
 
-export { hexToRgb, rgbToHex, getLuminance, contrastRatio, isValidHex } from "./shared";
-import { hexToRgb, rgbToHex, contrastRatio, isValidHex } from "./shared";
+export { hexToRgb, rgbToHex, getLuminance, contrastRatio, isValidHex } from "@plzfixthx/slide-spec";
+import { hexToRgb, rgbToHex, contrastRatio, isValidHex } from "@plzfixthx/slide-spec";
 
 /**
  * Find nearest compliant color from a palette

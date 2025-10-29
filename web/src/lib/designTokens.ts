@@ -4,7 +4,7 @@
  * Unified design system with WCAG 2.2 AA contrast compliance.
  */
 
-import { contrastRatio } from "./shared";
+import { contrastRatio } from "@plzfixthx/slide-spec";
 
 /* -------------------------------------------------------------------------- */
 /*                            WCAG Standards                                  */

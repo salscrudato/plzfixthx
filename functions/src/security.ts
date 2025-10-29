@@ -170,36 +170,7 @@ export function setRequestId(req: Request, res: Response): string {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Send a safe error response (no sensitive details)
+ * Note: Error response helpers have been consolidated into httpHelpers.ts
+ * Use sendError() from httpHelpers for all error responses.
  */
-export function sendSafeError(
-  res: Response,
-  statusCode: number,
-  message: string,
-  requestId?: string
-): void {
-  res.status(statusCode).json({
-    error: message,
-    ...(requestId && { requestId }),
-  });
-}
-
-/**
- * Send a structured error response
- */
-export function sendStructuredError(
-  res: Response,
-  statusCode: number,
-  code: string,
-  message: string,
-  details?: Record<string, unknown>
-): void {
-  res.status(statusCode).json({
-    error: {
-      code,
-      message,
-      ...(details && { details }),
-    },
-  });
-}
 

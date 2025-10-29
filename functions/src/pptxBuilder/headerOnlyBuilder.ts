@@ -17,20 +17,30 @@
  * Note: Pre-existing schema mismatches with SlideSpec are handled with type assertions.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// @ts-nocheck
 
 import PptxGenJS from "pptxgenjs";
 import { fetch as undiciFetch } from "undici";
 import type { SlideSpecV1, ChartKind } from "@plzfixthx/slide-spec";
-import { PX_PER_IN } from "@plzfixthx/slide-spec";
-import { 
-  calculateOptimalFontSize, 
-  truncateWithEllipsis, 
+import {
+  calculateOptimalFontSize,
+  truncateWithEllipsis,
   getTypographyPreset,
-  calculateVerticalRhythm 
 } from "../typographyEnhancer";
 import { optimizeImage } from "../imageOptimizer";
-import { opacityToTransparency } from "../shared";
+import { opacityToTransparency } from "@plzfixthx/slide-spec";
+// Design system imports
+import {
+  applyExecutiveMaster,
+  ensureContrast,
+  TYPOGRAPHY_SCALE,
+  FONT_FAMILIES,
+  BASELINE_RHYTHM,
+  CONTRAST_REQUIREMENTS,
+  computeGridFromDesignSystem,
+  getSlideDimensions,
+  gridRect as designSystemGridRect,
+  alignToBaseline,
+} from "../designSystem";
 
 /* -------------------------------------------------------------------------- */
 /*                        Back-compat: simple header slide                     */
@@ -53,8 +63,8 @@ export async function buildHeaderOnlySlide(
   const primaryColor = spec.color || "#005EB8"; // McKinsey-inspired blue
   const subtitleColor = "#64748B";
   const backgroundColor = "#FFFFFF";
-  const typography = getTypographyPreset("mckinsey"); // Consulting preset
 
+  const dims = getSlideDimensions(pptx, "16:9");
   slide.background = { color: backgroundColor };
 
   // Premium left accent bar (0.15in, with subtle shadow)
@@ -62,28 +72,24 @@ export async function buildHeaderOnlySlide(
     x: 0,
     y: 0,
     w: 0.15,
-    h: getSlideDims(pptx).h,
+    h: dims.height,
     fill: { color: primaryColor },
     line: { type: "none" },
-    shadow: { type: "outer", blur: 4, offset: 2, angle: 90, color: "#000000", opacity: 0.08 },
+    shadow: { type: "outer", blur: 4, offset: 2, angle: 90, color: "000000", opacity: 0.08 },
   });
 
   // Subtle gradient glaze (top-right, 12% opacity)
   slide.addShape(pptx.ShapeType.rect, {
-    x: getSlideDims(pptx).w - 4,
+    x: dims.width - 4,
     y: 0,
     w: 4,
     h: 1.2,
-    fill: { 
-      type: "gradient",
-      gradientStops: [
-        { position: 0, color: primaryColor, transparency: opacityToTransparency(0.12) },
-        { position: 1, color: backgroundColor, transparency: opacityToTransparency(0.00) },
-      ],
-    },
+    fill: {
+      color: primaryColor,
+      transparency: opacityToTransparency(0.12),
+    } as any,
     line: { type: "none" },
-    rectRadius: 12,
-  });
+  } as any);
 
   // Header with optimal sizing - Professional McKinsey standards
   // Use 26pt for headers (consulting standard), positioned with precise alignment
@@ -137,97 +143,43 @@ export async function buildSlideFromSpec(
   spec: SlideSpecV1
 ): Promise<void> {
   const slide = pptx.addSlide();
-  const dims = getSlideDims(pptx, spec.meta.aspectRatio); // Aspect-aware dims
-  const grid = computeGrid(spec, dims);
-  // @ts-ignore - spec.design is guaranteed to exist at runtime
-  const typography = getTypographyPreset(spec.design?.pattern || "modern");
-  const rhythm = calculateVerticalRhythm(typography.scale.body, typography.lineHeights.body);
 
-  // --- Background & premium accents (McKinsey/BCG-inspired) -----------------
+  // Use design system grid for consistent, professional layouts
+  const dims = getSlideDimensions(pptx, spec.meta.aspectRatio);
+  const dsGrid = computeGridFromDesignSystem(dims);
+
+  // Use professional typography scale from design system
+  const typography = getTypographyPreset(spec.design?.pattern || "modern");
+  const rhythm = BASELINE_RHYTHM; // Use design system baseline rhythm
+
+  // --- Palette & Background (Professional Standards) -----------------
   const palette = spec.styleTokens?.palette ?? {
     primary: "#005EB8", // McKinsey blue default
     accent: "#F3C13A", // McKinsey gold
     neutral: generateNeutralRamp(), // From colorPaletteGenerator
   };
   const bg = palette.neutral?.[palette.neutral.length - 1] ?? "#FFFFFF";
-  slide.background = { color: bg };
 
-  // Left accent bar (0.15in, gradient for depth)
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0,
-    y: 0,
-    w: 0.15,
-    h: dims.h,
-    fill: { 
-      type: "gradient",
-      gradientStops: [
-        { position: 0, color: palette.primary },
-        { position: 1, color: adjustColor(palette.primary, -20) }, // Darker shade
-      ],
-    },
-    line: { type: "none" },
-    shadow: { type: "outer", blur: 6, offset: 3, angle: 90, color: "#000000", opacity: 0.1 },
-  });
-
-  // Subtle top-right glaze (15% opacity, rounded)
-  slide.addShape(pptx.ShapeType.rect, {
-    x: dims.w - 3.5,
-    y: 0.15,
-    w: 3.2,
-    h: 1.2,
-    fill: { color: palette.accent, transparency: opacityToTransparency(0.15) },
-    line: { type: "none" },
-    rectRadius: 16,
-  });
-
-  // Premium vertical accent line (faint, with glow)
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0.25,
-    y: 0.1,
-    w: 0.05,
-    h: Math.max(0, dims.h - 0.2),
-    fill: { color: palette.accent, transparency: opacityToTransparency(0.85) },
-    line: { type: "none" },
-    rectRadius: 4,
-    shadow: { type: "outer", blur: 8, offset: 0, angle: 0, color: palette.accent, opacity: 0.3 }, // Glow effect
-  });
-
-  // Bottom accent block (tinted, with text if footer present)
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0.4,
-    y: dims.h - 0.9,
-    w: 3.0,
-    h: 0.7,
-    fill: { color: palette.primary, transparency: opacityToTransparency(0.92) },
-    line: { type: "none" },
-    rectRadius: 10,
-  });
-  if (spec.content.footer?.text) {
-    slide.addText(
-      spec.content.footer.text,
-      {
-        x: 0.5,
-        y: dims.h - 0.8,
-        w: 2.8,
-        h: 0.5,
-        fontFace: typography.fonts.body,
-        fontSize: typography.scale.caption,
-        color: "#FFFFFF",
-        align: "left",
-        valign: "middle",
-      } as any
-    );
-  }
+  // Apply executive master styling (background, accent bar, gradient glaze)
+  applyExecutiveMaster(slide, pptx, palette.primary, bg);
 
   // --- Render by regions/anchors (with vertical rhythm) ---------------------
   const anchorsByRegion = groupAnchorsByRegion(spec);
   const fontSans = safeFont(spec.styleTokens?.typography?.fonts?.sans);
 
   for (const region of spec.layout.regions) {
-    const regionRect = gridRect(region, grid);
+    // Use design system grid for pixel-perfect alignment
+    // Convert 1-based region coordinates to 0-based grid coordinates
+    const regionRect = designSystemGridRect(
+      dsGrid,
+      (region.colStart || 1) - 1, // Convert to 0-based
+      (region.rowStart || 1) - 1, // Convert to 0-based
+      region.colSpan || 1,
+      region.rowSpan || 1
+    );
 
     // Flow within region with rhythm-aligned padding
-    let cursorY = alignToRhythm(regionRect.y + 0.15, rhythm); // Align to baseline
+    let cursorY = alignToBaseline(regionRect.y + 0.15, rhythm); // Align to baseline
     const innerX = regionRect.x + 0.15;
     const innerW = Math.max(0, regionRect.w - 0.3);
     const flowGap = rhythm * 0.5; // Half-rhythm for spacing
@@ -241,18 +193,29 @@ export async function buildSlideFromSpec(
       if (!type) continue;
 
       const remaining = regionRect.y + regionRect.h - cursorY;
-      const H = alignToRhythm(preferredHeight(type, remaining), rhythm);
+
+      // Check if there's enough space for this element (at least 0.3 inches)
+      if (remaining < 0.3) break;
+
+      const H = alignToBaseline(preferredHeight(type, remaining), rhythm);
 
       switch (type) {
         case "title": {
           const title = spec.content.title!;
           const base = clampNum(
-            typography.scale.h1,
+            TYPOGRAPHY_SCALE.h1, // Use design system scale
             32,
             48
           );
           const titleSize = calculateOptimalFontSize(title.text, innerW, H, base, 28, typography.lineHeights.display);
           const titleText = truncateWithEllipsis(title.text, innerW, H, titleSize, typography.lineHeights.display);
+
+          // Ensure AAA contrast for title
+          const titleColor = ensureContrast(
+            palette.primary || "#005EB8",
+            bg,
+            CONTRAST_REQUIREMENTS.textAAA
+          );
 
           slide.addText(
             titleText,
@@ -261,16 +224,15 @@ export async function buildSlideFromSpec(
               y: cursorY,
               w: innerW,
               h: H,
-              fontFace: typography.fonts.display,
+              fontFace: FONT_FAMILIES.primary, // Use design system font
               fontSize: titleSize,
               bold: true,
-              color: palette.primary || "#005EB8",
+              color: titleColor,
               align: spec.components?.title?.align ?? "left",
               valign: "top",
               lineSpacingMultiple: typography.lineHeights.display,
               letterSpacing: typography.letterSpacing.display,
               wrap: true,
-              shadow: { type: "outer", blur: 2, offset: 1, angle: 45, color: "#000000", opacity: 0.05 },
             } as any
           );
 
@@ -280,7 +242,7 @@ export async function buildSlideFromSpec(
         case "subtitle": {
           const subtitle = spec.content.subtitle!;
           const base = clampNum(
-            typography.scale.h2,
+            TYPOGRAPHY_SCALE.h2, // Use design system scale
             20,
             28
           );
@@ -294,8 +256,14 @@ export async function buildSlideFromSpec(
           );
           const subtitleText = truncateWithEllipsis(subtitle.text, innerW, H, subtitleSize, typography.lineHeights.heading);
 
-          const subtitleColor =
-            (palette.neutral && palette.neutral[3]) || "#64748B";
+          const subtitleColorBase = (palette.neutral && palette.neutral[3]) || "#64748B";
+
+          // Ensure AAA contrast for subtitle
+          const subtitleColor = ensureContrast(
+            subtitleColorBase,
+            bg,
+            CONTRAST_REQUIREMENTS.textAAA
+          );
 
           slide.addText(
             subtitleText,
@@ -304,7 +272,7 @@ export async function buildSlideFromSpec(
               y: cursorY,
               w: innerW,
               h: H,
-              fontFace: typography.fonts.body,
+              fontFace: FONT_FAMILIES.primary, // Use design system font
               fontSize: subtitleSize,
               color: subtitleColor,
               align: "left",
@@ -327,13 +295,20 @@ export async function buildSlideFromSpec(
           const bulletParas = items.map((it) => {
             const indentLevel = Math.max(0, (it.level || 1) - 1);
 
-            // Professional color hierarchy
-            const bulletColor =
+            // Professional color hierarchy with AAA contrast enforcement
+            const bulletColorBase =
               it.level === 1
                 ? palette.primary || "#005EB8"
                 : it.level === 2
                 ? (palette.neutral && palette.neutral[2]) || "#334155"
                 : (palette.neutral && palette.neutral[3]) || "#475569";
+
+            // Ensure AAA contrast for all bullet text
+            const bulletColor = ensureContrast(
+              bulletColorBase,
+              bg,
+              CONTRAST_REQUIREMENTS.textAAA
+            );
 
             // Professional font sizing: 12pt for bullets (consulting standard)
             const bulletSize = it.level === 1 ? 12 : it.level === 2 ? 11 : 10;
@@ -374,13 +349,20 @@ export async function buildSlideFromSpec(
           break;
         }
 
-        case "callout": {
+        case "callout" as any: {
           const callout = spec.content.callouts!.find(
             (c) => c.id === anchor.refId
           )!;
-          const { bg, border, textColor } = calloutColors(
-            callout.type || "note",
+          const { bg: calloutBg, border, textColor: textColorBase } = calloutColors(
+            (callout as any).type || "note",
             palette
+          );
+
+          // Ensure AAA contrast for callout text
+          const textColor = ensureContrast(
+            textColorBase,
+            calloutBg,
+            CONTRAST_REQUIREMENTS.textAAA
           );
 
           // Card with shadow and icon
@@ -389,7 +371,7 @@ export async function buildSlideFromSpec(
             y: cursorY,
             w: innerW,
             h: H,
-            fill: { color: bg },
+            fill: { color: calloutBg },
             line: { color: border, width: 2.5 },
             rectRadius: 16,
             shadow: {
@@ -397,7 +379,7 @@ export async function buildSlideFromSpec(
               blur: 12,
               offset: 4,
               angle: 45,
-              color: "#000000",
+              color: "000000",
               opacity: 0.12,
             },
           });
@@ -414,9 +396,10 @@ export async function buildSlideFromSpec(
           });
 
           // Add icon if present
-          if (callout.icon) {
+          const calloutIcon = (callout as any).icon;
+          if (calloutIcon) {
             slide.addText(
-              callout.icon, // Assume Unicode or font icon
+              calloutIcon, // Assume Unicode or font icon
               {
                 x: innerX + 0.2,
                 y: cursorY + 0.25,
@@ -501,6 +484,9 @@ export async function buildSlideFromSpec(
               viz.valueFormat
             );
 
+            // Get professional chart styling with AAA contrast
+            const chartOptions = getProfessionalChartOptions(palette, bg, viz);
+
             // Professional chart rendering with McKinsey-quality styling
             slide.addChart(
               supported,
@@ -511,32 +497,9 @@ export async function buildSlideFromSpec(
                 w: innerW,
                 h: H,
                 title: viz.title,
-                titleSize: 14, // Professional chart title size
-                titleColor: palette.primary,
-                titleBold: true,
-                titleFontFace: "Aptos",
-                showLegend: !!viz.legend,
-                legendPos: toLegendPos(viz.legend?.position) || "b", // Bottom by default
-                legendFontSize: 10, // Professional legend size
-                legendFontFace: "Aptos",
-                catAxisLabelFontSize: 10, // Professional axis label size
-                valAxisLabelFontSize: 10,
-                catAxisLabelColor: (palette.neutral && palette.neutral[3]) || "#64748B",
-                valAxisLabelColor: (palette.neutral && palette.neutral[3]) || "#64748B",
-                dataLabelFontSize: 9, // Professional data label size
-                dataLabelColor: (palette.neutral && palette.neutral[2]) || "#334155",
-                dataLabelFontFace: "Aptos",
-                barDir: "col",
-                chartColors: chartSeriesColors(palette),
-                // Subtle gridlines for professional look
-                catGridLine: { style: "solid", size: 0.5, color: (palette.neutral && palette.neutral[7]) || "#E2E8F0" },
-                valGridLine: { style: "solid", size: 0.5, color: (palette.neutral && palette.neutral[7]) || "#E2E8F0" },
                 valAxisFormatCode,
                 dataLabelFormatCode,
-                showValue: true, // Show data labels
-                dataLabelPosition: "outEnd", // Position labels outside bars
-                border: { pt: 0.5, color: (palette.neutral && palette.neutral[6]) || "#CBD5E1" }, // Subtle border
-                shadow: { type: "outer", blur: 6, offset: 3, color: "#000000", opacity: 0.08 }, // Subtle shadow
+                ...chartOptions, // Apply professional defaults
               } as any
             );
           }
@@ -549,22 +512,28 @@ export async function buildSlideFromSpec(
 
           let url = img.source?.type === "url" ? img.source.url : undefined;
           if (img.source?.type === "unsplash") {
-            url = `https://source.unsplash.com/random?${encodeURIComponent(img.source.query)}`; // Unsplash integration
+            const query = (img.source as any).query || "abstract";
+            url = `https://source.unsplash.com/random?${encodeURIComponent(query)}`; // Unsplash integration
           }
 
           const buffer = await fetchImageBuffer(url);
 
           if (!buffer) {
-            // Enhanced placeholder with icon
+            // Enhanced placeholder with professional styling
+            const placeholderBg = (palette.neutral && palette.neutral[7]) || "#E2E8F0";
+            const placeholderTextBase = (palette.neutral && palette.neutral[2]) || "#334155";
+            const placeholderText = ensureContrast(
+              placeholderTextBase,
+              placeholderBg,
+              CONTRAST_REQUIREMENTS.textAAA
+            );
+
             slide.addShape(pptx.ShapeType.rect, {
               x: target.x,
               y: target.y,
               w: target.w,
               h: target.h,
-              fill: {
-                color: (palette.neutral && palette.neutral[5]) || "#94A3B8",
-                transparency: opacityToTransparency(0.3),
-              },
+              fill: { color: placeholderBg },
               line: {
                 color: (palette.neutral && palette.neutral[5]) || "#94A3B8",
                 width: 1.5,
@@ -578,28 +547,24 @@ export async function buildSlideFromSpec(
                 y: target.y + target.h / 2 - 0.2,
                 w: target.w,
                 h: 0.4,
-                fontFace: fontSans,
+                fontFace: FONT_FAMILIES.primary,
                 fontSize: 14,
-                color: (palette.neutral && palette.neutral[2]) || "#334155",
+                color: placeholderText,
                 align: "center",
                 valign: "middle",
               } as any
             );
           } else {
-            slide.addImage({
-              data: buffer,
-              x: target.x,
-              y: target.y,
-              w: target.w,
-              h: target.h,
-              sizing: {
-                type: (img.fit || "cover") as any,
-                w: target.w,
-                h: target.h,
-              },
-              altText: img.alt || "Slide image", // Accessibility
-              shadow: { type: "outer", blur: 8, offset: 4, color: "#000000", opacity: 0.15 },
-            } as any);
+            // Apply professional image fit modes
+            const fitMode = img.fit || "cover";
+            const imageOptions = applyImageFitMode(
+              buffer,
+              target,
+              fitMode,
+              img.alt || "Slide image"
+            );
+
+            slide.addImage(imageOptions as any);
           }
           break;
         }
@@ -641,14 +606,14 @@ export async function buildSlideFromSpec(
         }
       }
 
-      cursorY = alignToRhythm(cursorY + H + flowGap, rhythm);
-      if (cursorY > regionRect.y + regionRect.h - 0.15) break;
+      cursorY = alignToBaseline(cursorY + H + flowGap, rhythm);
     }
   }
 
   // Animation hints (add to slide notes)
-  if (spec.design.animationHints?.length) {
-    slide.addNotes(spec.design.animationHints.join("\n"));
+  const animationHints = (spec.design as any)?.animationHints;
+  if (animationHints?.length) {
+    slide.addNotes(animationHints.join("\n"));
   }
 }
 
@@ -656,16 +621,7 @@ export async function buildSlideFromSpec(
 /*                                   Helpers                                   */
 /* -------------------------------------------------------------------------- */
 
-type Dims = { w: number; h: number };
-
-function getSlideDims(pptx: PptxGenJS, aspect: "16:9" | "4:3" = "16:9"): Dims {
-  if (aspect === "4:3") return { w: 10, h: 7.5 };
-  return { w: 10, h: 5.625 };
-}
-
-function pxToIn(px: number): number {
-  return Math.round((px / PX_PER_IN) * 1000) / 1000;
-}
+// Removed: Now using getSlideDimensions, computeGridFromDesignSystem, gridRect, and alignToBaseline from design system
 
 function clampNum(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));
@@ -675,9 +631,7 @@ function safeFont(value?: string): string {
   return value?.trim() || "Aptos, Calibri, Arial, sans-serif";
 }
 
-function alignToRhythm(position: number, rhythm: number): number {
-  return Math.round(position / rhythm) * rhythm;
-}
+// Removed: Now using alignToBaseline from design system
 
 function adjustColor(hex: string, percent: number): string {
   const { r, g, b } = hexToRgb(hex);
@@ -699,42 +653,7 @@ function rgbToHex(r: number, g: number, b: number): string {
   return `#${[r, g, b].map((x) => Math.round(x).toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** Compute grid geometry (inches) with asymmetry support */
-function computeGrid(spec: SlideSpecV1, dims: Dims) {
-  const g = spec.layout.grid;
-  const margins = {
-    t: pxToIn(g.margin.t ?? 40), // Increased for breathing room
-    r: pxToIn(g.margin.r ?? 40),
-    b: pxToIn(g.margin.b ?? 40),
-    l: pxToIn(g.margin.l ?? 40),
-  };
-  const gutterIn = pxToIn(g.gutter ?? 12); // BCG-inspired wider gutters
-
-  const innerW = Math.max(0, dims.w - margins.l - margins.r);
-  const innerH = Math.max(0, dims.h - margins.t - margins.b);
-
-  const colW = (innerW - gutterIn * (g.cols - 1)) / g.cols;
-  const rowH = (innerH - gutterIn * (g.rows - 1)) / g.rows;
-
-  return {
-    originX: margins.l,
-    originY: margins.t,
-    gutterIn,
-    colW,
-    rowH,
-  };
-}
-
-function gridRect(
-  region: { rowStart: number; colStart: number; rowSpan: number; colSpan: number },
-  grid: { originX: number; originY: number; gutterIn: number; colW: number; rowH: number }
-) {
-  const x = grid.originX + (region.colStart - 1) * (grid.colW + grid.gutterIn);
-  const y = grid.originY + (region.rowStart - 1) * (grid.rowH + grid.gutterIn);
-  const w = region.colSpan * grid.colW + (region.colSpan - 1) * grid.gutterIn;
-  const h = region.rowSpan * grid.rowH + (region.rowSpan - 1) * grid.gutterIn;
-  return { x, y, w, h };
-}
+// Removed: Now using computeGridFromDesignSystem and gridRect from design system
 
 type RegionKey = SlideSpecV1["layout"]["regions"][number]["name"];
 type Anchor = SlideSpecV1["layout"]["anchors"][number];
@@ -809,13 +728,13 @@ function mapChartKind(pptx: PptxGenJS, kind?: ChartKind | string | null) {
     case "bubble":
       return T.bubble;
     case "stock":
-      return T.stock;
+      return (T as any).stock || T.line; // Fallback to line if stock not available
     case "combo":
       return T.bar; // Base for combo
     case "waterfall":
       return T.bar; // Stacked bar fallback with custom data
     case "funnel":
-      return T.pyramid; // Pyramid as funnel fallback
+      return (T as any).pyramid || T.bar; // Pyramid as funnel fallback, or bar if not available
     default:
       return null;
   }
@@ -852,14 +771,109 @@ function mapFormatCodes(fmt: ValueFormat | undefined): {
       return { valAxisFormatCode: "0%", dataLabelFormatCode: "0%" };
     case "currency":
       return { valAxisFormatCode: "$#,##0", dataLabelFormatCode: "$#,##0" };
-    case "decimal":
-      return { valAxisFormatCode: "0.00", dataLabelFormatCode: "0.00" };
     case "number":
       return { valAxisFormatCode: "0", dataLabelFormatCode: "0" };
     case "auto":
     default:
+      // Handle other formats (like "decimal") as auto
       return {};
   }
+}
+
+/* ------------------------ Professional Chart Styling ----------------------- */
+
+/**
+ * Get professional chart styling options
+ *
+ * Applies McKinsey/BCG/Bain quality defaults:
+ * - Minimal gridlines
+ * - Professional typography
+ * - Palette-based colors
+ * - AAA contrast for all text
+ */
+function getProfessionalChartOptions(
+  palette: SlideSpecV1["styleTokens"]["palette"],
+  bg: string,
+  viz: any
+): any {
+  // Ensure AAA contrast for all chart text
+  const chartTitleColor = ensureContrast(
+    palette.primary || "#005EB8",
+    bg,
+    CONTRAST_REQUIREMENTS.textAAA
+  );
+  const axisLabelColorBase = (palette.neutral && palette.neutral[3]) || "#64748B";
+  const axisLabelColor = ensureContrast(
+    axisLabelColorBase,
+    bg,
+    CONTRAST_REQUIREMENTS.textAAA
+  );
+  const dataLabelColorBase = (palette.neutral && palette.neutral[2]) || "#334155";
+  const dataLabelColor = ensureContrast(
+    dataLabelColorBase,
+    bg,
+    CONTRAST_REQUIREMENTS.textAAA
+  );
+
+  return {
+    // Title styling
+    titleSize: 14,
+    titleColor: chartTitleColor,
+    titleBold: true,
+    titleFontFace: FONT_FAMILIES.primary,
+
+    // Legend styling
+    showLegend: !!(viz as any).legend,
+    legendPos: toLegendPos((viz as any).legend?.position) || "b",
+    legendFontSize: 10,
+    legendFontFace: FONT_FAMILIES.primary,
+
+    // Axis label styling
+    catAxisLabelFontSize: 10,
+    valAxisLabelFontSize: 10,
+    catAxisLabelColor: axisLabelColor,
+    valAxisLabelColor: axisLabelColor,
+    catAxisLabelFontFace: FONT_FAMILIES.primary,
+    valAxisLabelFontFace: FONT_FAMILIES.primary,
+
+    // Data label styling
+    dataLabelFontSize: 9,
+    dataLabelColor: dataLabelColor,
+    dataLabelFontFace: FONT_FAMILIES.primary,
+    showValue: true,
+    dataLabelPosition: "outEnd",
+
+    // Colors
+    chartColors: chartSeriesColors(palette),
+
+    // Minimal gridlines (professional look)
+    catGridLine: {
+      style: "solid",
+      size: 0.5,
+      color: (palette.neutral && palette.neutral[7]) || "#E2E8F0"
+    },
+    valGridLine: {
+      style: "solid",
+      size: 0.5,
+      color: (palette.neutral && palette.neutral[7]) || "#E2E8F0"
+    },
+
+    // Subtle border and shadow
+    border: {
+      pt: 0.5,
+      color: (palette.neutral && palette.neutral[6]) || "#CBD5E1"
+    },
+    shadow: {
+      type: "outer",
+      blur: 6,
+      offset: 3,
+      color: "000000",
+      opacity: 0.08
+    },
+
+    // Bar direction
+    barDir: "col",
+  };
 }
 
 /* ------------------------------ Callout colors ------------------------------ */
@@ -887,6 +901,97 @@ function calloutColors(
         bg: "#F3F4F6",
         border: palette.accent || "#EC4899",
         textColor: "#1F2937",
+      };
+  }
+}
+
+/* --------------------------- Image Fit Modes --------------------------- */
+
+/**
+ * Apply professional image fit modes
+ *
+ * Fit modes:
+ * - cover: Fill the entire area, crop if needed (default)
+ * - contain: Fit entire image within area, letterbox if needed
+ * - fill: Stretch to fill area (may distort)
+ */
+function applyImageFitMode(
+  buffer: Buffer,
+  target: { x: number; y: number; w: number; h: number },
+  fitMode: "cover" | "contain" | "fill",
+  altText: string
+): any {
+  const baseOptions = {
+    data: buffer,
+    altText,
+    shadow: {
+      type: "outer",
+      blur: 8,
+      offset: 4,
+      color: "000000",
+      opacity: 0.15
+    },
+  };
+
+  switch (fitMode) {
+    case "cover":
+      // Fill entire area, crop if needed (default)
+      return {
+        ...baseOptions,
+        x: target.x,
+        y: target.y,
+        w: target.w,
+        h: target.h,
+        sizing: {
+          type: "cover",
+          w: target.w,
+          h: target.h,
+        },
+      };
+
+    case "contain":
+      // Fit entire image within area, letterbox if needed
+      return {
+        ...baseOptions,
+        x: target.x,
+        y: target.y,
+        w: target.w,
+        h: target.h,
+        sizing: {
+          type: "contain",
+          w: target.w,
+          h: target.h,
+        },
+      };
+
+    case "fill":
+      // Stretch to fill area (may distort aspect ratio)
+      return {
+        ...baseOptions,
+        x: target.x,
+        y: target.y,
+        w: target.w,
+        h: target.h,
+        sizing: {
+          type: "crop",
+          w: target.w,
+          h: target.h,
+        },
+      };
+
+    default:
+      // Default to cover
+      return {
+        ...baseOptions,
+        x: target.x,
+        y: target.y,
+        w: target.w,
+        h: target.h,
+        sizing: {
+          type: "cover",
+          w: target.w,
+          h: target.h,
+        },
       };
   }
 }
@@ -922,7 +1027,7 @@ async function fetchImageBuffer(url?: string, maxRetries = 3): Promise<Buffer | 
       const ab = await res.arrayBuffer();
       const buffer = Buffer.from(ab);
 
-      const optimized = await optimizeImage(buffer, url, { quality: 82, maxWidth: 1920 }); // Enhanced opts
+      const optimized = await optimizeImage(buffer, url); // Enhanced opts
       return optimized;
     } catch (e) {
       if (attempt < maxRetries) {

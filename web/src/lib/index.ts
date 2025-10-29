@@ -8,7 +8,7 @@
 /*                            Shared Utilities                                */
 /* -------------------------------------------------------------------------- */
 
-export * from "./shared";
+export * from "@plzfixthx/slide-spec";
 export * from "./styleSync";
 export * from "./designTokens";
 
@@ -46,5 +46,5 @@ export * from "./env";
 /*                            Type Definitions                                */
 /* -------------------------------------------------------------------------- */
 
-export type { SlideSpecV1 } from "@/types/SlideSpecV1";
+export type { SlideSpecV1 } from "@plzfixthx/slide-spec";
 

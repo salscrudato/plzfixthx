@@ -1,24 +1,48 @@
-import type { SlideSpec } from "@/types/SlideSpecV1";
+import type { SlideSpec } from "@plzfixthx/slide-spec";
 
 /** Env helpers */
 const region = import.meta.env.VITE_FUNCTIONS_REGION || "us-central1";
-const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || "pls-fix-thx";
+const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || "plsfixthx-ai-2025";
 const baseOverride = import.meta.env.VITE_FUNCTIONS_BASE_URL;
-const useProd = !!import.meta.env.VITE_USE_PRODUCTION_FUNCTIONS;
 
-/** Resolve base URL for Cloud Functions (supports local emulator) */
+/**
+ * Resolve base URL for Cloud Functions.
+ *
+ * PRODUCTION/STAGING: Always uses deployed endpoints.
+ * DEVELOPMENT: Uses deployed endpoints by default. Set VITE_FUNCTIONS_BASE_URL to override.
+ *
+ * Emulator usage is blocked in production builds to ensure all testing happens against deployed functions.
+ */
 export function baseUrl(): string {
   // Prefer explicit override
-  if (baseOverride) return baseOverride;
-
-  // Dev → emulator unless forced to prod
-  if (import.meta.env.DEV && !useProd) {
-    // Emulator for HTTPS onRequest v2: http://127.0.0.1:5001/{project}/{region}
-    return `http://127.0.0.1:5001/${projectId}/${region}`;
+  if (baseOverride) {
+    // Guard: Block emulator URLs in production builds
+    if (import.meta.env.PROD && isEmulatorUrl(baseOverride)) {
+      throw new Error(
+        `PRODUCTION BUILD ERROR: Emulator URL detected in VITE_FUNCTIONS_BASE_URL. ` +
+        `Production builds must use deployed Firebase Functions. ` +
+        `Remove emulator URL from environment configuration.`
+      );
+    }
+    return baseOverride;
   }
 
-  // Default deployed endpoint (v2 still supports cloudfunctions.net routing)
+  // Always use deployed endpoint (no emulator support)
   return `https://${region}-${projectId}.cloudfunctions.net`;
+}
+
+/**
+ * Detect emulator URLs to prevent accidental production usage
+ */
+function isEmulatorUrl(url: string): boolean {
+  const emulatorPatterns = [
+    /localhost/i,
+    /127\.0\.0\.1/,
+    /0\.0\.0\.0/,
+    /:5001\b/, // Firebase Functions emulator default port
+    /\[::1\]/, // IPv6 localhost
+  ];
+  return emulatorPatterns.some(pattern => pattern.test(url));
 }
 
 /** Fetch with timeout, one retry on transient errors */
