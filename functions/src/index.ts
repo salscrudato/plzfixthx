@@ -6,7 +6,6 @@ import { getApp } from "firebase-admin/app";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { SlideSpecZ, type SlideSpec } from "@plzfixthx/slide-spec";
-import { getAuth } from "firebase-admin/auth"; // Added for auth
 
 // Import AI helpers
 import {
@@ -175,22 +174,9 @@ export const generateSlideSpec = onRequest(
     const memoryBefore = process.memoryUsage().heapUsed / 1024 / 1024;
     const ip = req.ip || "unknown";
 
-    // Auth check
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-    try {
-      await getAuth().verifyIdToken(authHeader.split(" ")[1]);
-    } catch {
-      res.status(401).json({ error: "Invalid token" });
-      return;
-    }
-
-    // Rate limit
+    // Rate limit (public access with rate limiting for protection)
     if (!(await checkRateLimit(ip))) {
-      res.status(429).json({ error: "Rate limit exceeded" });
+      res.status(429).json({ error: "Rate limit exceeded. Please try again in a minute." });
       return;
     }
 
