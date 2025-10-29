@@ -141,7 +141,8 @@ async function callVendor(prompt: string): Promise<SlideSpec> {
 
 /** Rate limiter (IP-based) */
 async function checkRateLimit(ip: string): Promise<boolean> {
-  const limit = RATE_LIMIT_MIN.value() || 100;
+  const limitStr = RATE_LIMIT_MIN.value();
+  const limit = limitStr ? parseInt(limitStr, 10) : 100;
   const docRef = db.collection(rateLimitCollection).doc(ip);
   const doc = await docRef.get();
   const data = doc.data() || { count: 0, lastReset: Date.now() };
@@ -175,9 +176,15 @@ export const generateSlideSpec = onRequest(
     const ip = req.ip || "unknown";
 
     // Rate limit (public access with rate limiting for protection)
-    if (!(await checkRateLimit(ip))) {
-      res.status(429).json({ error: "Rate limit exceeded. Please try again in a minute." });
-      return;
+    try {
+      const rateLimitOk = await checkRateLimit(ip);
+      if (!rateLimitOk) {
+        res.status(429).json({ error: "Rate limit exceeded. Please try again in a minute." });
+        return;
+      }
+    } catch (rateLimitError: any) {
+      // Log rate limit error but don't block the request
+      logger.warn("Rate limit check failed, allowing request", { error: rateLimitError.message, ip });
     }
 
     try {
