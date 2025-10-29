@@ -36,11 +36,17 @@ function fixImports(dir) {
           return line.replace(
             /@plzfixthx\/slide-spec/g,
             () => {
-              // Calculate relative path from current file to slide-spec
+              // Calculate relative path based on file location
+              // Files in lib/ use ./slide-spec/index.js
+              // Files in lib/pptxBuilder/ use ../slide-spec/index.js
               const fileDir = path.dirname(filePath);
-              const libDir = path.join(path.dirname(filePath), '..');
+              const libDir = path.join(__dirname, '../lib');
               const slideSpecPath = path.join(libDir, 'slide-spec', 'index.js');
-              const relativePath = path.relative(fileDir, slideSpecPath).replace(/\\/g, '/');
+              let relativePath = path.relative(fileDir, slideSpecPath).replace(/\\/g, '/');
+              // Ensure relative paths start with ./ or ../
+              if (!relativePath.startsWith('.')) {
+                relativePath = './' + relativePath;
+              }
               return relativePath;
             }
           );

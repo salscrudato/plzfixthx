@@ -1,9 +1,11 @@
 import * as logger from "firebase-functions/logger";
 import { fetch as undiciFetch } from "undici";
 import { z } from "zod";
+import { DEFAULT_NEUTRAL_9, DEFAULT_TYPOGRAPHY } from "@plzfixthx/slide-spec";
 import { ENHANCED_SYSTEM_PROMPT } from "./prompts";
 import { generatePalette } from "./colorPaletteGenerator";
 import { randomUUID } from "crypto";
+import { contrastRatio, hexToRgb } from "./shared";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -31,38 +33,43 @@ export class ValidationError extends AIError {
   }
 }
 
+export class ModerationError extends AIError {
+  constructor(message: string, requestId: string, details?: Record<string, any>) {
+    super(message, "MODERATION_ERROR", requestId, details);
+    this.name = "ModerationError";
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /*                               Color & Contrast                             */
 /* -------------------------------------------------------------------------- */
 
 /**
- * WCAG 2.2 relative luminance + contrast.
- * Parses #RRGGBB (alpha ignored). Returns ratio and compliance.
+ * WCAG 2.2 contrast validation using shared utility
  */
 function ensureContrast(textHex: string, bgHex: string, minRatio: number) {
-  const toRGB = (hex: string): [number, number, number] => {
-    const clean = hex.replace("#", "").slice(0, 6);
-    const r = parseInt(clean.slice(0, 2), 16) / 255;
-    const g = parseInt(clean.slice(2, 4), 16) / 255;
-    const b = parseInt(clean.slice(4, 6), 16) / 255;
-    return [r, g, b];
-  };
-
-  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
-
-  const luminance = (hex: string) => {
-    const [r, g, b] = toRGB(hex);
-    const R = lin(r);
-    const G = lin(g);
-    const B = lin(b);
-    return 0.2126 * R + 0.7152 * G + 0.0722 * B;
-  };
-
-  const L1 = luminance(textHex);
-  const L2 = luminance(bgHex);
-  const ratio = (Math.max(L1, L2) + 0.05) / (Math.min(L1, L2) + 0.05);
-
+  const ratio = contrastRatio(textHex, bgHex);
   return { compliant: ratio >= minRatio, ratio };
+}
+
+/**
+ * Generate a compliant neutral ramp if invalid
+ */
+function generateCompliantNeutralRamp(): string[] {
+  // Simple linear interpolation from dark to light
+  const [darkR, darkG, darkB] = hexToRgb("#0F172A");
+  const [lightR, lightG, lightB] = hexToRgb("#F8FAFC");
+  const ramp: string[] = [];
+
+  for (let i = 0; i < 9; i++) {
+    const t = i / 8;
+    const r = Math.round(darkR * (1 - t) + lightR * t);
+    const g = Math.round(darkG * (1 - t) + lightG * t);
+    const b = Math.round(darkB * (1 - t) + lightB * t);
+    ramp.push(`#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`);
+  }
+
+  return ramp;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -92,8 +99,8 @@ export async function retryWithBackoff<T>(
       lastError = error as Error;
 
       if (attempt < maxRetries - 1) {
-        const jitter = Math.floor(Math.random() * 150);
-        const delay = Math.min(8000, baseDelay * Math.pow(2, attempt)) + jitter;
+        const jitter = Math.floor(Math.random() * 300); // Increased jitter for better distribution
+        const delay = Math.min(16000, baseDelay * Math.pow(2, attempt)) + jitter; // Increased max delay
         logger.warn(`Attempt ${attempt + 1} failed; retrying in ${delay}ms`, {
           error: (lastError as any)?.message || String(lastError),
         });
@@ -111,11 +118,10 @@ export async function retryWithBackoff<T>(
 
 /**
  * Convert Zod schema to JSON Schema for structured output.
- * Always available now that zod-to-json-schema is a dependency.
+ * Enhanced with strict mode and draft version.
  */
 function toJsonSchema(schema: z.ZodTypeAny): any {
   const json = zodToJsonSchema(schema, { name: "SlideSpec" });
-  // Add draft for providers that expect a $schema field
   if (json && typeof json === "object" && !("$schema" in json)) {
     (json as any).$schema = "http://json-schema.org/draft-07/schema#";
   }
@@ -151,6 +157,7 @@ type AIResp = {
  * 3) Validate with provided Zod schema and clean unknown keys
  * 4) Track request/response IDs and token usage
  * 5) Enforce content-length guard (max 200KB)
+ * 6) Added cost estimation and timeout handling
  */
 export async function callAIWithRetry(
   prompt: string,
@@ -171,11 +178,15 @@ export async function callAIWithRetry(
     const attempt = async (mode: "json_schema" | "json_object") => {
       usedMode = mode;
 
+      // Convert UUID to integer seed (OpenAI requires integer, not string)
+      const seedStr = requestId.split("-")[0];
+      const seedInt = parseInt(seedStr.substring(0, 8), 16) % 2147483647; // Use first 8 hex chars as seed
+
       const body: any = {
         model,
-        temperature: 0.2,
+        temperature: 0.3, // Slightly increased for more creative but controlled output
         top_p: 0.95,
-        seed: requestId.split("-")[0], // Use first segment of UUID for reproducibility
+        seed: seedInt, // Use integer seed for reproducibility
         max_tokens: 4096, // Reasonable limit for slide content
         response_format:
           mode === "json_schema"
@@ -197,166 +208,183 @@ export async function callAIWithRetry(
         ],
       };
 
-      const response = await undiciFetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(body),
-      });
+      // Add timeout to fetch (30s)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-      const duration = Date.now() - start;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        logger.error("AI API request failed", {
-          requestId,
-          status: response.status,
-          error: errorText?.slice(0, 500),
-          model,
-          promptLength: prompt.length,
-          durationMs: duration,
-          responseFormat: usedMode,
+      try {
+        const response = await undiciFetch(`${baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+          body: JSON.stringify(body),
+          signal: controller.signal,
         });
 
-        // If provider rejects json_schema, fall back once to json_object in-place
-        const maybeUnsupported =
-          usedMode === "json_schema" &&
-          response.status === 400 &&
-          /schema|response_format|unsupported/i.test(errorText || "");
-        if (maybeUnsupported) {
-          return attempt("json_object");
+        clearTimeout(timeoutId);
+        const duration = Date.now() - start;
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          logger.error("AI API request failed", {
+            requestId,
+            status: response.status,
+            error: errorText?.slice(0, 500),
+            model,
+            promptLength: prompt.length,
+            durationMs: duration,
+            responseFormat: usedMode,
+          });
+
+          // If provider rejects json_schema, fall back once to json_object in-place
+          const maybeUnsupported =
+            usedMode === "json_schema" &&
+            response.status === 400 &&
+            /schema|response_format|unsupported/i.test(errorText || "");
+          if (maybeUnsupported) {
+            return attempt("json_object");
+          }
+
+          throw new AIError(
+            `AI API error ${response.status}: ${errorText?.slice(0, 200)}`,
+            "API_ERROR",
+            requestId,
+            { status: response.status, model, durationMs: duration }
+          );
         }
 
-        throw new AIError(
-          `AI API error ${response.status}: ${errorText?.slice(0, 200)}`,
-          "API_ERROR",
-          requestId,
-          { status: response.status, model, durationMs: duration }
-        );
-      }
+        let data: AIResp;
+        try {
+          data = (await response.json()) as AIResp;
+          responseId = (data as any)?.id || randomUUID();
+        } catch (e) {
+          logger.error("Failed to parse AI response as JSON", {
+            requestId,
+            error: String(e),
+            durationMs: duration,
+          });
+          throw new AIError(
+            `Failed to parse AI response: ${e}`,
+            "PARSE_ERROR",
+            requestId,
+            { durationMs: duration }
+          );
+        }
 
-      let data: AIResp;
-      try {
-        data = (await response.json()) as AIResp;
-        responseId = (data as any)?.id || randomUUID();
-      } catch (e) {
-        logger.error("Failed to parse AI response as JSON", {
-          requestId,
-          error: String(e),
-          durationMs: duration,
-        });
-        throw new AIError(
-          `Failed to parse AI response: ${e}`,
-          "PARSE_ERROR",
-          requestId,
-          { durationMs: duration }
-        );
-      }
+        const content = data?.choices?.[0]?.message?.content;
+        if (!content) {
+          logger.error("No content in AI response", {
+            requestId,
+            responseId,
+            data: JSON.stringify(data)?.slice(0, 500),
+            durationMs: duration,
+            responseFormat: usedMode,
+          });
+          throw new AIError(
+            "No content in AI response",
+            "NO_CONTENT",
+            requestId,
+            { responseId, durationMs: duration }
+          );
+        }
 
-      const content = data?.choices?.[0]?.message?.content;
-      if (!content) {
-        logger.error("No content in AI response", {
+        // Content-length guard: reject responses > 200KB
+        const contentLength = Buffer.byteLength(content, "utf8");
+        if (contentLength > 200 * 1024) {
+          logger.error("AI response too large", {
+            requestId,
+            responseId,
+            contentLength,
+            maxAllowed: 200 * 1024,
+            durationMs: duration,
+          });
+          throw new AIError(
+            `AI response too large: ${contentLength} bytes (max 200KB)`,
+            "RESPONSE_TOO_LARGE",
+            requestId,
+            { responseId, durationMs: duration, contentLength }
+          );
+        }
+
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(content);
+        } catch (e) {
+          logger.error("Failed to parse AI response content as JSON", {
+            requestId,
+            responseId,
+            content: content.slice(0, 500),
+            error: String(e),
+            durationMs: duration,
+            responseFormat: usedMode,
+          });
+          throw new AIError(
+            `Failed to parse AI response as JSON: ${e}`,
+            "JSON_PARSE_ERROR",
+            requestId,
+            { responseId, durationMs: duration }
+          );
+        }
+
+        const validation = schema.safeParse(parsed);
+        if (!validation.success) {
+          const detail = validation.error.issues
+            .map((issue: any) => `${issue.path.join(".")}: ${issue.message}`)
+            .join(", ");
+          logger.error("Schema validation failed", {
+            requestId,
+            responseId,
+            topIssues: validation.error.issues.slice(0, 5),
+            errorDetails: detail.slice(0, 500),
+            aiResponse: JSON.stringify(parsed, null, 2).slice(0, 1000),
+            durationMs: duration,
+            responseFormat: usedMode,
+          });
+          throw new ValidationError(
+            `Schema validation failed: ${detail.slice(0, 200)}`,
+            requestId,
+            { responseId, durationMs: duration, issues: validation.error.issues.slice(0, 5) }
+          );
+        }
+
+        // Clean unknown keys from validated data
+        const cleanedData = cleanSpec(validation.data, schema);
+
+        // Log token usage and estimate cost (assuming $0.002/1k input, $0.006/1k output for gpt-4o-mini)
+        if (data.usage) {
+          const inputCost = (data.usage.prompt_tokens || 0) * 0.002 / 1000;
+          const outputCost = (data.usage.completion_tokens || 0) * 0.006 / 1000;
+          logger.info("AI token usage", {
+            requestId,
+            responseId,
+            promptTokens: data.usage.prompt_tokens,
+            completionTokens: data.usage.completion_tokens,
+            totalTokens: data.usage.total_tokens,
+            estimatedCost: (inputCost + outputCost).toFixed(4),
+            durationMs: duration,
+          });
+        }
+
+        logger.info("✅ AI response validated", {
           requestId,
           responseId,
-          data: JSON.stringify(data)?.slice(0, 500),
+          hasTitle: !!(cleanedData as any)?.content?.title,
+          hasBullets: !!(cleanedData as any)?.content?.bullets,
+          hasChart: !!(cleanedData as any)?.content?.dataViz,
           durationMs: duration,
           responseFormat: usedMode,
-        });
-        throw new AIError(
-          "No content in AI response",
-          "NO_CONTENT",
-          requestId,
-          { responseId, durationMs: duration }
-        );
-      }
-
-      // Content-length guard: reject responses > 200KB
-      const contentLength = Buffer.byteLength(content, "utf8");
-      if (contentLength > 200 * 1024) {
-        logger.error("AI response too large", {
-          requestId,
-          responseId,
+          promptTokens: data.usage?.prompt_tokens,
+          completionTokens: data.usage?.completion_tokens,
           contentLength,
-          maxAllowed: 200 * 1024,
-          durationMs: duration,
         });
-        throw new AIError(
-          `AI response too large: ${contentLength} bytes (max 200KB)`,
-          "RESPONSE_TOO_LARGE",
-          requestId,
-          { responseId, durationMs: duration, contentLength }
-        );
+
+        return cleanedData;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if ((error as Error).name === 'AbortError') {
+          throw new AIError("AI request timed out", "TIMEOUT_ERROR", requestId, { durationMs: Date.now() - start });
+        }
+        throw error;
       }
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(content);
-      } catch (e) {
-        logger.error("Failed to parse AI response content as JSON", {
-          requestId,
-          responseId,
-          content: content.slice(0, 500),
-          error: String(e),
-          durationMs: duration,
-          responseFormat: usedMode,
-        });
-        throw new AIError(
-          `Failed to parse AI response as JSON: ${e}`,
-          "JSON_PARSE_ERROR",
-          requestId,
-          { responseId, durationMs: duration }
-        );
-      }
-
-      const validation = schema.safeParse(parsed);
-      if (!validation.success) {
-        const detail = validation.error.issues
-          .map((issue: any) => `${issue.path.join(".")}: ${issue.message}`)
-          .join(", ");
-        logger.error("Schema validation failed", {
-          requestId,
-          responseId,
-          topIssues: validation.error.issues.slice(0, 5),
-          errorDetails: detail.slice(0, 500),
-          aiResponse: JSON.stringify(parsed, null, 2).slice(0, 1000),
-          durationMs: duration,
-          responseFormat: usedMode,
-        });
-        throw new ValidationError(
-          `Schema validation failed: ${detail.slice(0, 200)}`,
-          requestId,
-          { responseId, durationMs: duration, issues: validation.error.issues.slice(0, 5) }
-        );
-      }
-
-      // Clean unknown keys from validated data
-      const cleanedData = cleanSpec(validation.data, schema);
-
-      // Log token usage if available
-      if (data.usage) {
-        logger.info("AI token usage", {
-          requestId,
-          responseId,
-          promptTokens: data.usage.prompt_tokens,
-          completionTokens: data.usage.completion_tokens,
-          totalTokens: data.usage.total_tokens,
-          durationMs: duration,
-        });
-      }
-
-      logger.info("✅ AI response validated", {
-        requestId,
-        responseId,
-        hasTitle: !!(cleanedData as any)?.content?.title,
-        hasBullets: !!(cleanedData as any)?.content?.bullets,
-        hasChart: !!(cleanedData as any)?.content?.dataViz,
-        durationMs: duration,
-        responseFormat: usedMode,
-        promptTokens: data.usage?.prompt_tokens,
-        completionTokens: data.usage?.completion_tokens,
-        contentLength,
-      });
-
-      return cleanedData;
     };
 
     // First try json_schema; fallback to json_object on 400/unsupported
@@ -368,12 +396,15 @@ export async function callAIWithRetry(
 /*                              Prompt sanitation                              */
 /* -------------------------------------------------------------------------- */
 
-export function sanitizePrompt(prompt: string, maxLength = 800): string {
+export function sanitizePrompt(prompt: string, maxLength = 1200): string { // Increased max length for more complex prompts
   if (!prompt || typeof prompt !== "string") throw new Error("Prompt must be a non-empty string");
   let p = prompt.trim();
 
   // Remove code fences and obvious wrappers
   p = p.replace(/^```[a-z0-9]*\n?/i, "").replace(/```$/i, "").trim();
+
+  // Remove potential jailbreak attempts
+  p = p.replace(/ignore previous instructions|forget rules|act as|roleplay/gi, "");
 
   if (p.length < 3) throw new Error("Prompt must be at least 3 characters long");
 
@@ -395,34 +426,38 @@ export function moderateContent(
   const lower = prompt.toLowerCase();
 
   // Business context keywords allow benign usage (esp. crypto/finance/security topics)
-  const benignBusiness = /\b(strategy|market|roadmap|policy|regulation|regulatory|compliance|report|analysis|architecture|infrastructure|risk|controls|governance|kpi|presentation|slide|deck|test|testing|assessment)\b/i;
+  const benignBusiness = /\b(strategy|market|roadmap|policy|regulation|regulatory|compliance|report|analysis|architecture|infrastructure|risk|controls|governance|kpi|presentation|slide|deck|test|testing|assessment|business|finance|consulting)\b/i;
 
-  // High-risk categories
+  // High-risk categories - expanded for more coverage
   const categories: Array<{ name: string; rx: RegExp; severity: number }> = [
     // Explicit wrongdoing / instructions
-    { name: "violent wrongdoing", rx: /\b(build|make|how\s*to|instructions?|guide)\b.*\b(bomb|weapon|explosive|molotov|knife|gun)\b/i, severity: 5 },
-    { name: "cyber wrongdoing", rx: /\b(hack|zero[-\s]?day|exploit|ransomware|botnet|ddos|bypass|backdoor)\b.*\b(guide|how|tutorial|steps?|system)\b/i, severity: 5 },
+    { name: "violent wrongdoing", rx: /\b(build|make|how\s*to|instructions?|guide|recipe)\b.*\b(bomb|weapon|explosive|molotov|knife|gun|poison|bioweapon|nuclear)\b/i, severity: 5 },
+    { name: "cyber wrongdoing", rx: /\b(hack|zero[-\s]?day|exploit|ransomware|botnet|ddos|bypass|backdoor|phish|malware|virus|trojan)\b.*\b(guide|how|tutorial|steps?|system|code|script)\b/i, severity: 5 },
     // Extremist violence or threats
-    { name: "incitement", rx: /\b(kill|murder|assault|shoot|stab)\b.*\b(how|plan|guide|tips?)\b/i, severity: 5 },
+    { name: "incitement", rx: /\b(kill|murder|assault|shoot|stab|bomb|terrorize|threaten)\b.*\b(how|plan|guide|tips?|target)\b/i, severity: 5 },
     // Sexual content explicit
-    { name: "sexual content", rx: /\b(porn|xxx|nsfw|explicit|nude|sexual)\b/i, severity: 4 },
+    { name: "sexual content", rx: /\b(porn|xxx|nsfw|explicit|nude|sexual|erotic|fetish|incest|bestiality)\b/i, severity: 4 },
     // Drugs illegal
-    { name: "illegal drugs", rx: /\b(cocaine|heroin|meth|mdma|lsd|fentanyl)\b/i, severity: 4 },
+    { name: "illegal drugs", rx: /\b(cocaine|heroin|meth|mdma|lsd|fentanyl|opioid|methamphetamine|ecstasy)\b.*\b(make|produce|manufacture|synthesis|buy|sell)\b/i, severity: 4 },
     // Fraud / scams
-    { name: "scams", rx: /\b(get\s*rich\s*quick|double\s*your\s*(money|btc)|seed\s*phrase|giveaway|airdrop\s*claim)\b/i, severity: 4 },
+    { name: "scams", rx: /\b(get\s*rich\s*quick|double\s*your\s*(money|btc)|seed\s*phrase|giveaway|airdrop\s*claim|ponzi|pyramid|fake\s*invoice|fraud|scam\s*script)\b/i, severity: 4 },
     // Hate / harassment
-    { name: "hate speech", rx: /\b(racist|white\s*power|kkk|nazi|kill\s*\w+|gas\s*\w+)\b/i, severity: 5 },
+    { name: "hate speech", rx: /\b(racist|white\s*power|kkk|nazi|kill\s*\w+|gas\s*\w+|genocide|ethnic\s*cleansing|slur|discriminate)\b/i, severity: 5 },
+    // Additional: Child exploitation
+    { name: "child exploitation", rx: /\b(child|minor|kid|teen)\b.*\b(porn|abuse|exploit|traffic|sextort|groom)\b/i, severity: 5 },
+    // Additional: Self-harm
+    { name: "self-harm", rx: /\b(suicide|self-harm|cut|overdose|how\s*to\s*die)\b/i, severity: 5 },
   ];
 
   // **Allow** benign business contexts for crypto/security words
-  if (/\b(crypto|bitcoin|nft|blockchain|penetration\s*test|security)\b/i.test(prompt) && benignBusiness.test(prompt)) {
+  if (/\b(crypto|bitcoin|nft|blockchain|penetration\s*test|security|vulnerability|exploit|hack)\b/i.test(prompt) && benignBusiness.test(prompt)) {
     // do nothing — allowed
   } else {
     // Add softer generic matches (these alone shouldn't block)
     categories.push(
-      { name: "generic violence", rx: /\b(violence|weapon|bomb|terror)\b/i, severity: 1 },
-      { name: "generic cyber", rx: /\b(hack|exploit|vulnerability|xss|sql\s*injection|malware)\b/i, severity: 2 },
-      { name: "generic spam", rx: /\b(spam|scam|phishing|fraud)\b/i, severity: 2 }
+      { name: "generic violence", rx: /\b(violence|weapon|bomb|terror|assault|murder)\b/i, severity: 1 },
+      { name: "generic cyber", rx: /\b(hack|exploit|vulnerability|xss|sql\s*injection|malware|virus)\b/i, severity: 2 },
+      { name: "generic spam", rx: /\b(spam|scam|phishing|fraud|fake|forge)\b/i, severity: 2 }
     );
   }
 
@@ -437,8 +472,8 @@ export function moderateContent(
   }
 
   // Length abuse
-  if (prompt.length > 4000) {
-    return { safe: false, reason: "Prompt too long (max 4000 chars)", categories: ["abuse"] };
+  if (prompt.length > 8000) { // Increased max for complex prompts
+    return { safe: false, reason: "Prompt too long (max 8000 chars)", categories: ["abuse"] };
   }
 
   // Repetition abuse
@@ -447,14 +482,26 @@ export function moderateContent(
     const freq = new Map<string, number>();
     for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
     const maxFreq = Math.max(...freq.values());
-    if (maxFreq > words.length * 0.5) {
-      return { safe: false, reason: "Excessive repetition", categories: ["abuse"] };
+    if (maxFreq > words.length * 0.4) { // Lowered threshold for stricter check
+      return { safe: false, reason: "Excessive repetition detected", categories: ["abuse"] };
     }
   }
 
+  // Entropy check for gibberish
+  const charFreq = new Map<string, number>();
+  for (const char of prompt) {
+    charFreq.set(char, (charFreq.get(char) || 0) + 1);
+  }
+  const entropy = -Array.from(charFreq.values())
+    .map(f => f / prompt.length * Math.log2(f / prompt.length))
+    .reduce((a, b) => a + b, 0);
+  if (entropy < 2.5) { // Low entropy indicates potential spam/gibberish
+    return { safe: false, reason: "Low content entropy (possible spam)", categories: ["abuse"] };
+  }
+
   if (score >= 2) {
-    logger.warn("Content moderation blocked prompt", { categories: hits });
-    return { safe: false, reason: "Content may be unsafe or disallowed", categories: hits };
+    logger.warn("Content moderation blocked prompt", { categories: hits, score });
+    throw new ModerationError("Content may be unsafe or disallowed", randomUUID(), { categories: hits, score });
   }
 
   return { safe: true };
@@ -466,10 +513,14 @@ export function moderateContent(
 
 /**
  * Generate a minimal but valid fallback spec when AI generation fails.
- * Ensures the slide is still renderable with sensible defaults.
+ * Enhanced to extract key phrases from prompt for better relevance.
  */
 export function generateFallbackSpec(prompt: string, requestId: string): any {
   logger.warn("Generating fallback spec", { requestId, prompt: prompt.slice(0, 100) });
+
+  // Simple keyword extraction for title
+  const keywords = prompt.split(/\s+/).slice(0, 8).join(" ");
+  const title = ensureActionVerb(keywords) || "Untitled Slide";
 
   return {
     meta: {
@@ -478,21 +529,33 @@ export function generateFallbackSpec(prompt: string, requestId: string): any {
       theme: "Professional",
       aspectRatio: "16:9",
     },
+    design: {
+      pattern: "minimal",
+      whitespace: { strategy: "generous", breathingRoom: 0.3 },
+    },
     content: {
       title: {
         id: "title",
-        text: prompt.slice(0, 60).trim() || "Untitled Slide",
+        text: title,
       },
       subtitle: {
         id: "subtitle",
-        text: "Generated with fallback due to AI service unavailability",
+        text: "AI generation fallback - please try again or simplify prompt",
       },
+      bullets: [
+        {
+          id: "b1",
+          items: [
+            { text: "Key topic: " + prompt.slice(0, 80), level: 1 },
+          ]
+        }
+      ],
     },
     layout: {
       grid: {
-        rows: 6,
-        cols: 6,
-        gutter: 16,
+        rows: 8,
+        cols: 12,
+        gutter: 8,
         margin: { t: 32, r: 32, b: 32, l: 32 },
       },
       regions: [
@@ -501,14 +564,14 @@ export function generateFallbackSpec(prompt: string, requestId: string): any {
           rowStart: 1,
           colStart: 1,
           rowSpan: 2,
-          colSpan: 6,
+          colSpan: 12,
         },
         {
           name: "body",
           rowStart: 3,
           colStart: 1,
-          rowSpan: 4,
-          colSpan: 6,
+          rowSpan: 6,
+          colSpan: 12,
         },
       ],
       anchors: [
@@ -522,38 +585,21 @@ export function generateFallbackSpec(prompt: string, requestId: string): any {
           region: "header",
           order: 1,
         },
+        {
+          refId: "b1",
+          region: "body",
+          order: 0,
+        },
       ],
     },
     styleTokens: {
       palette: {
         primary: "#1E40AF",
         accent: "#F59E0B",
-        neutral: [
-          "#0F172A",
-          "#1E293B",
-          "#334155",
-          "#475569",
-          "#64748B",
-          "#94A3B8",
-          "#CBD5E1",
-          "#E2E8F0",
-          "#F8FAFC",
-        ],
+        neutral: [...DEFAULT_NEUTRAL_9],
       },
-      typography: {
-        fonts: { sans: "Inter, Arial, sans-serif" },
-        sizes: {
-          "step_-2": 12,
-          "step_-1": 14,
-          step_0: 16,
-          step_1: 20,
-          step_2: 24,
-          step_3: 44,
-        },
-        weights: { regular: 400, medium: 500, semibold: 600, bold: 700 },
-        lineHeights: { compact: 1.2, standard: 1.5 },
-      },
-      spacing: { base: 16, steps: [4, 8, 12, 16, 24, 32, 48, 64] },
+      typography: DEFAULT_TYPOGRAPHY,
+      spacing: { base: 4, steps: [0,4,8,12,16,24,32,48,64] },
       radii: { sm: 4, md: 8, lg: 12 },
       shadows: {
         sm: "0 1px 2px rgba(0,0,0,0.05)",
@@ -570,12 +616,13 @@ export function generateFallbackSpec(prompt: string, requestId: string): any {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Action verbs for professional slide titles
+ * Action verbs for professional slide titles - expanded list
  */
 const ACTION_VERBS = [
   "Transform", "Accelerate", "Unlock", "Optimize", "Drive", "Elevate", "Maximize",
   "Enhance", "Streamline", "Innovate", "Deliver", "Enable", "Build", "Scale",
-  "Achieve", "Create", "Develop", "Implement", "Launch", "Execute"
+  "Achieve", "Create", "Develop", "Implement", "Launch", "Execute", "Revolutionize",
+  "Pioneer", "Catalyze", "Amplify", "Fortify", "Reinvent", "Empower", "Orchestrate"
 ];
 
 /**
@@ -590,14 +637,22 @@ function ensureActionVerb(title: string): string {
 
   if (startsWithAction) return trimmed;
 
+  // Heuristic-based verb selection
+  const growthKeywords = /\b(grow|increase|expand|scale|boost)\b/i.test(trimmed);
+  const efficiencyKeywords = /\b(efficien|optim|streamline|reduce|cost|save)\b/i.test(trimmed);
+  const innovationKeywords = /\b(innovat|new|develop|create|build)\b/i.test(trimmed);
+
+  let verb = "Unlock";
+  if (growthKeywords) verb = "Accelerate";
+  else if (efficiencyKeywords) verb = "Optimize";
+  else if (innovationKeywords) verb = "Innovate";
+
   // If title is a noun phrase, prepend appropriate verb
-  // Simple heuristic: if starts with "The/A/An", it's likely a noun phrase
   if (/^(the|a|an)\s+/i.test(trimmed)) {
-    return `Unlock ${trimmed}`;
+    return `${verb} ${trimmed.replace(/^(the|a|an)\s+/i, "")}`;
   }
 
-  // Otherwise, return as-is (might already be imperative)
-  return trimmed;
+  return `${verb} ${trimmed}`;
 }
 
 /**
@@ -614,12 +669,20 @@ function normalizeBulletGrammar(text: string): string {
     normalized = normalized.charAt(0).toUpperCase() + normalized.slice(1);
   }
 
+  // Ensure action-oriented if possible
+  const verbs = /\b(is|are|was|were|has|have|had)\b/i;
+  if (verbs.test(normalized)) {
+    normalized = normalized.replace(verbs, match => {
+      return match.toLowerCase() === 'is' ? 'Implement' : 'Drive'; // Simple replacement
+    });
+  }
+
   return normalized;
 }
 
 /**
  * Split concatenated bullets like "1776 A 1783 B 1789 C" -> separate items.
- * Extended to handle year ranges, quarters, and date patterns.
+ * Extended to handle year ranges, quarters, month-year, and numbered lists.
  */
 function splitConcatenatedBullets(bulletGroup: any): any {
   if (!bulletGroup.items || bulletGroup.items.length === 0) return bulletGroup;
@@ -630,29 +693,49 @@ function splitConcatenatedBullets(bulletGroup: any): any {
 
     // Pattern 1: Year events (1776 Event A 1783 Event B)
     const yearEventPattern = /(\d{4}\s+[^0-9]+?)(?=\d{4}\s+|$)/g;
-    const yearMatches = text.match(yearEventPattern);
+    const yearMatches = [...text.matchAll(yearEventPattern)].map(m => m[0]);
 
     // Pattern 2: Year ranges (1999–2001 Event A 2002–2004 Event B)
     const yearRangePattern = /(\d{4}[–-]\d{4}\s+[^0-9]+?)(?=\d{4}[–-]\d{4}\s+|$)/g;
-    const rangeMatches = text.match(yearRangePattern);
+    const rangeMatches = [...text.matchAll(yearRangePattern)].map(m => m[0]);
 
-    // Pattern 3: Quarters (Q1 Event A Q2 Event B)
+    // Pattern 3: Quarters (Q1 2024 Event A Q2 2024 Event B)
     const quarterPattern = /(Q[1-4]\s+\d{4}\s+[^Q]+?)(?=Q[1-4]\s+\d{4}\s+|$)/gi;
-    const quarterMatches = text.match(quarterPattern);
+    const quarterMatches = [...text.matchAll(quarterPattern)].map(m => m[0]);
 
     // Pattern 4: Month-year dates (Jan 2024 Event A Feb 2024 Event B)
     const monthYearPattern = /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s+[^A-Z]+?)(?=(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}\s+|$)/gi;
-    const monthMatches = text.match(monthYearPattern);
+    const monthMatches = [...text.matchAll(monthYearPattern)].map(m => m[0]);
 
-    if ((yearMatches && yearMatches.length > 1) ||
-        (rangeMatches && rangeMatches.length > 1) ||
-        (quarterMatches && quarterMatches.length > 1) ||
-        (monthMatches && monthMatches.length > 1)) {
-      const matches = yearMatches || rangeMatches || quarterMatches || monthMatches || [];
+    // Pattern 5: Numbered lists (1. Item A 2. Item B)
+    const numberedPattern = /(\d+\.\s+[^0-9]+?)(?=\d+\.\s+|$)/g;
+    const numberedMatches = [...text.matchAll(numberedPattern)].map(m => m[0].replace(/^\d+\.\s+/, '')); // Strip number
+
+    let matches: string[] = [];
+    let patternType = '';
+
+    if (yearMatches.length > 1) {
+      matches = yearMatches;
+      patternType = 'year';
+    } else if (rangeMatches.length > 1) {
+      matches = rangeMatches;
+      patternType = 'range';
+    } else if (quarterMatches.length > 1) {
+      matches = quarterMatches;
+      patternType = 'quarter';
+    } else if (monthMatches.length > 1) {
+      matches = monthMatches;
+      patternType = 'month';
+    } else if (numberedMatches.length > 1) {
+      matches = numberedMatches;
+      patternType = 'numbered';
+    }
+
+    if (matches.length > 1) {
       logger.info("Splitting concatenated timeline bullets", {
         original: text.slice(0, 100),
         count: matches.length,
-        pattern: yearMatches ? "year" : rangeMatches ? "range" : quarterMatches ? "quarter" : "month"
+        pattern: patternType
       });
       for (const m of matches) {
         newItems.push({ text: m.trim(), level: item.level || 1 });
@@ -665,12 +748,76 @@ function splitConcatenatedBullets(bulletGroup: any): any {
 }
 
 /**
+ * Infer and add callouts if key insights detected in bullets
+ */
+function inferCallouts(spec: any): any {
+  if (!Array.isArray(spec.content?.bullets) || spec.content.callouts?.length > 0) return spec;
+
+  const potentialCallouts: any[] = [];
+  const insightPatterns = /\b(roi|kpi|metric|achieve|impact|result|projected|forecast|benchmark)\b/i;
+  const riskPatterns = /\b(risk|challenge|constraint|warning|blocker|issue)\b/i;
+
+  for (const group of spec.content.bullets) {
+    for (const item of group.items || []) {
+      const text = item.text || '';
+      if (insightPatterns.test(text)) {
+        potentialCallouts.push({
+          id: `c_${potentialCallouts.length}`,
+          type: "success",
+          text: text.slice(0, 40),
+          icon: "check-circle"
+        });
+      } else if (riskPatterns.test(text)) {
+        potentialCallouts.push({
+          id: `c_${potentialCallouts.length}`,
+          type: "warning",
+          text: text.slice(0, 40),
+          icon: "alert-triangle"
+        });
+      }
+    }
+  }
+
+  if (potentialCallouts.length > 0) {
+    spec.content.callouts = potentialCallouts.slice(0, 3); // Max 3 inferred
+    logger.info("Inferred callouts from bullets", { count: spec.content.callouts.length });
+  }
+
+  return spec;
+}
+
+/**
+ * Suggest image placeholders if content suggests visuals
+ */
+function suggestImages(spec: any): any {
+  if (spec.content.images?.length > 0 || spec.content.imagePlaceholders?.length > 0) return spec;
+
+  const visualPatterns = /\b(image|photo|illustration|diagram|chart|graph|picture|visual|depict|show)\b/i;
+  const hasVisualHint = visualPatterns.test(JSON.stringify(spec.content));
+
+  if (hasVisualHint) {
+    spec.content.imagePlaceholders = [
+      {
+        id: "ph1",
+        role: "illustration",
+        alt: "Suggested illustration for key concept"
+      }
+    ];
+    logger.info("Added suggested image placeholder based on content");
+  }
+
+  return spec;
+}
+
+/**
  * Post-process and enhance AI-generated slide spec.
  * - Ensures required fields
- * - Trims bullets to policy (<=3 groups, <=5 items each, <=80 chars)
+ * - Trims bullets to policy (<=3 groups, <=6 items each, <=80 chars)
  * - Normalizes chart series to labels length
- * - Validates palette, enforces 9 neutrals & contrast AA/AAA
- * - Heuristically fixes header layout when title+subtitle present
+ * - Validates palette, enforces 9 neutrals & contrast AAA
+ * - Heuristically fixes header layout
+ * - Infers callouts and suggests images
+ * - Enhanced color validation with luminance checks
  */
 export function enhanceSlideSpec(spec: any): any {
   const warnings: string[] = [];
@@ -678,6 +825,7 @@ export function enhanceSlideSpec(spec: any): any {
 
   // --- Required scaffolding --------------------------------------------------
   spec.meta = spec.meta || { version: "1.0", locale: "en-US", theme: "Professional", aspectRatio: "16:9" };
+  spec.design = spec.design || { pattern: "executive", whitespace: { strategy: "balanced", breathingRoom: 0.35 } };
   spec.content = spec.content || {};
   if (!spec.content.title?.text) spec.content.title = { id: "title", text: "Untitled Slide" };
 
@@ -692,9 +840,9 @@ export function enhanceSlideSpec(spec: any): any {
       warnings.push("Title enhanced with action verb");
     }
 
-    if (t.length > 60) {
-      warnings.push("Title truncated to 60 chars");
-      t = t.slice(0, 57).trim() + "...";
+    if (t.length > 50) { // Tightened limit for impact
+      warnings.push("Title truncated to 50 chars");
+      t = t.slice(0, 47).trim() + "...";
     }
     spec.content.title.text = t;
     spec.content.title.id = spec.content.title.id || "title";
@@ -702,9 +850,9 @@ export function enhanceSlideSpec(spec: any): any {
 
   if (spec.content.subtitle?.text) {
     let st = String(spec.content.subtitle.text).trim().replace(/\s+/g, " ");
-    if (st.length > 100) {
-      warnings.push("Subtitle truncated to 100 chars");
-      st = st.slice(0, 97).trim() + "...";
+    if (st.length > 80) { // Tightened limit
+      warnings.push("Subtitle truncated to 80 chars");
+      st = st.slice(0, 77).trim() + "...";
     }
     spec.content.subtitle.text = st;
     spec.content.subtitle.id = spec.content.subtitle.id || "subtitle";
@@ -726,12 +874,12 @@ export function enhanceSlideSpec(spec: any): any {
     spec.content.bullets = spec.content.bullets.map(splitConcatenatedBullets);
 
     // Per-item hygiene
-    const bulletValidation = validateBulletCount(spec.content.bullets, 5);
-    if (!bulletValidation.valid) warnings.push("Bullet items per group limited to 5");
+    const bulletValidation = validateBulletCount(spec.content.bullets, 6); // Increased to 6
+    if (!bulletValidation.valid) warnings.push("Bullet items per group limited to 6");
 
     for (const group of spec.content.bullets) {
       if (!Array.isArray(group.items)) group.items = [];
-      if (group.items.length > 5) group.items = group.items.slice(0, 5);
+      if (group.items.length > 6) group.items = group.items.slice(0, 6);
 
       for (let i = 0; i < group.items.length; i++) {
         let item = group.items[i];
@@ -762,15 +910,18 @@ export function enhanceSlideSpec(spec: any): any {
 
   // --- Callouts & IDs --------------------------------------------------------
   if (Array.isArray(spec.content.callouts)) {
-    spec.content.callouts = spec.content.callouts.slice(0, 2);
+    spec.content.callouts = spec.content.callouts.slice(0, 4); // Increased max to 4
     spec.content.callouts.forEach((c: any, i: number) => (c.id = c.id || `callout_${i}`));
+  } else {
+    // Infer callouts if possible
+    spec = inferCallouts(spec);
   }
 
   // --- Charts: series length == labels length + format sanity ---------------
   if (spec.content?.dataViz?.labels && spec.content?.dataViz?.series) {
     const viz = spec.content.dataViz;
     viz.id = viz.id || "dataviz";
-    const labelCount = Math.max(0, Math.min(10, viz.labels.length));
+    const labelCount = Math.max(0, Math.min(12, viz.labels.length)); // Increased max labels
     viz.labels = viz.labels.slice(0, labelCount);
 
     // Chart label sanity: if labels look numeric but valueFormat is "percent", normalize
@@ -802,6 +953,28 @@ export function enhanceSlideSpec(spec: any): any {
         s.values = (s.values || []).slice(0, labelCount);
       }
     }
+
+    // Add legend if multiple series
+    if (viz.series.length > 1 && !viz.legend) {
+      viz.legend = { position: "bottom", alignment: "center" };
+      warnings.push("Added default legend for multi-series chart");
+    }
+  }
+
+  // --- Images and placeholders -----------------------------------------------
+  spec = suggestImages(spec);
+
+  if (Array.isArray(spec.content.images)) {
+    spec.content.images.forEach((img: any, i: number) => {
+      img.id = img.id || `img_${i}`;
+      if (!img.fit) img.fit = "cover"; // Default fit
+    });
+  }
+
+  if (Array.isArray(spec.content.imagePlaceholders)) {
+    spec.content.imagePlaceholders.forEach((ph: any, i: number) => {
+      ph.id = ph.id || `ph_${i}`;
+    });
   }
 
   // --- Palette & accessibility with context-aware generation ------------------
@@ -827,25 +1000,17 @@ export function enhanceSlideSpec(spec: any): any {
   }
 
   // Guarantee exactly 9 neutrals, dark → light
-  const defaultNeutrals = [
-    "#0F172A",
-    "#1E293B",
-    "#334155",
-    "#475569",
-    "#64748B",
-    "#94A3B8",
-    "#CBD5E1",
-    "#E2E8F0",
-    "#F8FAFC",
-  ];
-
   if (!Array.isArray(p.neutral)) {
-    p.neutral = defaultNeutrals;
+    p.neutral = [...DEFAULT_NEUTRAL_9];
     warnings.push("Neutral palette defaulted");
   } else {
     const filtered = p.neutral.filter((c: any) => typeof c === "string" && hex.test(c)).slice(0, 9);
-    p.neutral = filtered.length === 9 ? filtered : defaultNeutrals;
-    if (filtered.length !== 9) warnings.push("Neutral palette corrected to 9 colors");
+    if (filtered.length !== 9) {
+      p.neutral = generateCompliantNeutralRamp();
+      warnings.push("Neutral palette regenerated to ensure 9 compliant colors");
+    } else {
+      p.neutral = filtered;
+    }
   }
 
   // Enforce contrast AAA for text (7:1); AA (4.5:1) for UI accents
@@ -853,8 +1018,9 @@ export function enhanceSlideSpec(spec: any): any {
   const bgColor = p.neutral[8];
   const textContrast = ensureContrast(textColor, bgColor, 7);
   if (!textContrast.compliant) {
-    p.neutral[0] = "#000000";
-    p.neutral[8] = "#FFFFFF";
+    // Use standard compliant colors
+    p.neutral[0] = "#111827"; // Darker text
+    p.neutral[8] = "#F9FAFB"; // Lighter bg
     warnings.push("Contrast adjusted to meet WCAG AAA (7:1)");
   }
 
@@ -862,7 +1028,7 @@ export function enhanceSlideSpec(spec: any): any {
   const primAcc = ensureContrast(p.primary, p.accent, 4.5);
   if (!primAcc.compliant) {
     // Pick a compliant accent from curated ramp
-    const accentRamp = ["#F59E0B", "#EC4899", "#8B5CF6", "#10B981", "#3B82F6", "#EF4444"];
+    const accentRamp = ["#F59E0B", "#EC4899", "#8B5CF6", "#10B981", "#3B82F6", "#EF4444", "#6366F1", "#14B8A6"];
     let foundCompliant = false;
     for (const candidate of accentRamp) {
       const test = ensureContrast(p.primary, candidate, 4.5);
@@ -879,7 +1045,7 @@ export function enhanceSlideSpec(spec: any): any {
     }
   }
 
-  // --- Layout heuristics: expand header if title+subtitle --------------------
+  // --- Layout heuristics -----------------------------------------------------
   spec = fixLayoutIssues(spec);
 
   if (warnings.length) {
@@ -898,26 +1064,150 @@ function fixLayoutIssues(spec: any): any {
 
   const hasSubtitle = !!spec.content?.subtitle?.text;
   const hasTitle = !!spec.content?.title?.text;
+  const hasChart = !!spec.content?.dataViz;
+  const hasBullets = Array.isArray(spec.content?.bullets) && spec.content.bullets.length > 0;
 
   const header = spec.layout.regions.find((r: any) => r.name === "header");
-  if (header && hasTitle && hasSubtitle && header.rowSpan === 1) {
+  if (header && hasTitle && hasSubtitle && header.rowSpan < 2) {
     header.rowSpan = 2;
 
     const body = spec.layout.regions.find((r: any) => r.name === "body");
-    if (body && body.rowStart === 2) {
+    if (body && body.rowStart <= 2) {
       body.rowStart = 3;
-      body.rowSpan = Math.max(1, body.rowSpan - 1);
+      body.rowSpan = Math.max(1, body.rowSpan - (3 - body.rowStart));
     }
-    const aside = spec.layout.regions.find((r: any) => r.name === "aside");
-    if (aside && aside.rowStart === 2) {
+    const aside = spec.layout.regions.find((r: any) => r.name === "aside" || r.name === "sidebar");
+    if (aside && aside.rowStart <= 2) {
       aside.rowStart = 3;
-      aside.rowSpan = Math.max(1, aside.rowSpan - 1);
+      aside.rowSpan = Math.max(1, aside.rowSpan - (3 - aside.rowStart));
+    }
+  }
+
+  // Split layout for chart + bullets
+  if (hasChart && hasBullets && spec.layout.regions.length < 3) {
+    // Add left/right body if not present
+    const bodyIndex = spec.layout.regions.findIndex((r: any) => r.name === "body");
+    if (bodyIndex !== -1) {
+      const body = spec.layout.regions[bodyIndex];
+      spec.layout.regions.splice(bodyIndex, 1); // Remove full body
+
+      spec.layout.regions.push({
+        name: "left-body",
+        rowStart: body.rowStart,
+        colStart: 1,
+        rowSpan: body.rowSpan,
+        colSpan: 5,
+      });
+      spec.layout.regions.push({
+        name: "right-body",
+        rowStart: body.rowStart,
+        colStart: 6,
+        rowSpan: body.rowSpan,
+        colSpan: 7,
+      });
+
+      // Reassign anchors
+      spec.layout.anchors = spec.layout.anchors.map((a: any) => {
+        if (a.region === "body") {
+          a.region = hasBullets ? "left-body" : "right-body";
+        }
+        return a;
+      });
+
+      // Assign chart to right, bullets to left
+      const chartAnchor = spec.layout.anchors.find((a: any) => a.refId === spec.content.dataViz?.id);
+      if (chartAnchor) chartAnchor.region = "right-body";
+
+      const bulletAnchors = spec.layout.anchors.filter((a: any) => a.refId.startsWith("bullets_") || a.refId.startsWith("b"));
+      bulletAnchors.forEach((a: any) => { a.region = "left-body"; });
+
+      logger.info("Split body layout for chart + bullets");
     }
   }
 
   // Drop anchors pointing to missing regions
   const regionNames = new Set(spec.layout.regions.map((r: any) => r.name));
   spec.layout.anchors = spec.layout.anchors.filter((a: any) => regionNames.has(a.region));
+
+  // Ensure all content elements have anchors
+  const anchorRefIds = new Set(spec.layout.anchors.map((a: any) => a.refId));
+  const mainRegion = spec.layout.regions.find((r: any) => r.name.includes("body"))?.name || "body";
+
+  // Add chart anchor if chart exists but not anchored
+  if (spec.content?.dataViz?.id && !anchorRefIds.has(spec.content.dataViz.id)) {
+    const maxOrder = Math.max(
+      0,
+      ...spec.layout.anchors
+        .filter((a: any) => a.region === mainRegion)
+        .map((a: any) => a.order || 0)
+    );
+    spec.layout.anchors.push({
+      refId: spec.content.dataViz.id,
+      region: mainRegion,
+      order: maxOrder + 1,
+    });
+    anchorRefIds.add(spec.content.dataViz.id);
+  }
+
+  // Add bullet anchors if bullets exist but not anchored
+  if (Array.isArray(spec.content?.bullets)) {
+    for (const bullet of spec.content.bullets) {
+      if (bullet.id && !anchorRefIds.has(bullet.id)) {
+        const maxOrder = Math.max(
+          0,
+          ...spec.layout.anchors
+            .filter((a: any) => a.region === mainRegion)
+            .map((a: any) => a.order || 0)
+        );
+        spec.layout.anchors.push({
+          refId: bullet.id,
+          region: mainRegion,
+          order: maxOrder + 1,
+        });
+        anchorRefIds.add(bullet.id);
+      }
+    }
+  }
+
+  // Add callout anchors if callouts exist but not anchored
+  if (Array.isArray(spec.content?.callouts)) {
+    for (const callout of spec.content.callouts) {
+      if (callout.id && !anchorRefIds.has(callout.id)) {
+        const maxOrder = Math.max(
+          0,
+          ...spec.layout.anchors
+            .filter((a: any) => a.region === mainRegion)
+            .map((a: any) => a.order || 0)
+        );
+        spec.layout.anchors.push({
+          refId: callout.id,
+          region: mainRegion,
+          order: maxOrder + 1,
+        });
+        anchorRefIds.add(callout.id);
+      }
+    }
+  }
+
+  // Add image anchors
+  if (Array.isArray(spec.content?.images)) {
+    for (const img of spec.content.images) {
+      if (img.id && !anchorRefIds.has(img.id)) {
+        const maxOrder = Math.max(
+          0,
+          ...spec.layout.anchors
+            .filter((a: any) => a.region === mainRegion)
+            .map((a: any) => a.order || 0)
+        );
+        spec.layout.anchors.push({
+          refId: img.id,
+          region: mainRegion,
+          order: maxOrder + 1,
+        });
+        anchorRefIds.add(img.id);
+      }
+    }
+  }
 
   return spec;
 }

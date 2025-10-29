@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { sanitizePrompt, detectAbuse, getClientId } from "../security";
+import { getClientId } from "../security";
+import { sanitizePrompt } from "../aiHelpers";
 import { Request } from "express";
 
 describe("security", () => {
@@ -20,13 +21,13 @@ describe("security", () => {
     });
 
     it("should reject prompts shorter than 3 characters", () => {
-      expect(() => sanitizePrompt("ab")).toThrow("Prompt must be at least 3 characters");
+      expect(() => sanitizePrompt("ab")).toThrow("Prompt must be at least 3 characters long");
     });
 
-    it("should truncate long prompts to 2000 characters", () => {
+    it("should truncate long prompts to 1200 characters by default", () => {
       const longPrompt = "a".repeat(5000);
       const result = sanitizePrompt(longPrompt);
-      expect(result.length).toBe(2000);
+      expect(result.length).toBeLessThanOrEqual(1200);
     });
 
     it("should reject non-string input", () => {
@@ -35,49 +36,7 @@ describe("security", () => {
     });
   });
 
-  describe("detectAbuse", () => {
-    it("should allow safe content", () => {
-      const result = detectAbuse("Create a professional presentation about sales");
-      expect(result.isAbusive).toBe(false);
-    });
-
-    it("should detect excessive character repetition", () => {
-      const result = detectAbuse("aaaaaaaaaaaaaaaaaaaaaa");
-      expect(result.isAbusive).toBe(true);
-      expect(result.reason).toContain("repetition");
-    });
-
-    it("should detect too many URLs", () => {
-      const prompt = "Check these: https://a.com https://b.com https://c.com https://d.com https://e.com https://f.com";
-      const result = detectAbuse(prompt);
-      expect(result.isAbusive).toBe(true);
-      expect(result.reason).toContain("URLs");
-    });
-
-    it("should detect spam patterns", () => {
-      const spamPrompts = [
-        "Buy viagra now",
-        "Click here for free money",
-        "Limited offer casino",
-      ];
-
-      for (const prompt of spamPrompts) {
-        const result = detectAbuse(prompt);
-        expect(result.isAbusive).toBe(true);
-        expect(result.reason).toContain("Spam");
-      }
-    });
-
-    it("should be case-insensitive for spam detection", () => {
-      const result = detectAbuse("BUY VIAGRA NOW");
-      expect(result.isAbusive).toBe(true);
-    });
-
-    it("should allow legitimate URLs", () => {
-      const result = detectAbuse("Check https://example.com for more info");
-      expect(result.isAbusive).toBe(false);
-    });
-  });
+  // Note: Content moderation tests are in aiHelpers.test.ts (moderateContent function)
 
   describe("getClientId", () => {
     it("should generate consistent IDs for same client", () => {

@@ -3,40 +3,12 @@
  * - Contrast ratio calculation (WCAG)
  * - Color manipulation and validation
  * - Nearest compliant color finding
+ *
+ * Note: Core color utilities are in shared.ts to avoid duplication
  */
 
-/** Convert hex to RGB */
-export function hexToRgb(hex: string): [number, number, number] {
-  const clean = hex.replace("#", "").slice(0, 6);
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
-  return [r, g, b];
-}
-
-/** Convert RGB to hex */
-export function rgbToHex(r: number, g: number, b: number): string {
-  return `#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
-}
-
-/** Calculate relative luminance (WCAG) */
-export function getLuminance(hex: string): number {
-  const [r, g, b] = hexToRgb(hex).map((x) => x / 255);
-  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
-  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-}
-
-/** Calculate contrast ratio (WCAG) */
-export function contrastRatio(hex1: string, hex2: string): number {
-  const l1 = getLuminance(hex1);
-  const l2 = getLuminance(hex2);
-  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-}
-
-/** Validate hex color format */
-export function isValidHex(color: string): boolean {
-  return /^#[0-9A-Fa-f]{6}$/.test(color);
-}
+export { hexToRgb, rgbToHex, getLuminance, contrastRatio, isValidHex } from "./shared";
+import { hexToRgb, rgbToHex, contrastRatio, isValidHex } from "./shared";
 
 /**
  * Find nearest compliant color from a palette

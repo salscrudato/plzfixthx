@@ -1,5 +1,7 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import type { SlideSpecV1 } from "@/types/SlideSpecV1";
+import { normalizePalette, DEFAULT_TYPOGRAPHY } from "@plzfixthx/slide-spec";
+import { hexWithAlpha } from "@/lib/shared";
 import {
   ResponsiveContainer,
   BarChart,
@@ -30,40 +32,8 @@ type Tokens = {
   pattern: NonNullable<SlideSpecV1["design"]>["pattern"] | "split";
 };
 
-const DEFAULT_NEUTRAL = [
-  "#0F172A",
-  "#1E293B",
-  "#334155",
-  "#475569",
-  "#64748B",
-  "#94A3B8",
-  "#CBD5E1",
-  "#E2E8F0",
-  "#F8FAFC",
-];
-
-const HEX6 = /^#[0-9A-Fa-f]{6}$/;
-
-/** Ensure primary, accent, and a 9‑step neutral ramp are always present/valid */
-function normalizePalette(p?: SlideSpecV1["styleTokens"]["palette"]): Tokens["palette"] {
-  const primary = p?.primary && HEX6.test(p.primary) ? p.primary : "#6366F1";
-  const accent = p?.accent && HEX6.test(p.accent) ? p.accent : "#EC4899";
-
-  let neutral = Array.isArray(p?.neutral) ? p!.neutral.filter((c): c is string => !!c && HEX6.test(c)) : [];
-  if (neutral.length < 9) neutral = DEFAULT_NEUTRAL;
-
-  return { primary, accent, neutral: neutral.slice(0, 9) };
-}
-
 function normalizeTypography(t?: SlideSpecV1["styleTokens"]["typography"]): Tokens["typography"] {
-  return (
-    t ?? {
-      fonts: { sans: "Inter, Arial, sans-serif" },
-      sizes: { "step_-2": 12, "step_-1": 14, step_0: 16, step_1: 20, step_2: 24, step_3: 40 },
-      weights: { regular: 400, medium: 500, semibold: 600, bold: 700 },
-      lineHeights: { compact: 1.2, standard: 1.5 },
-    }
-  );
+  return t ?? DEFAULT_TYPOGRAPHY;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -90,7 +60,7 @@ export const SlideCanvas = memo(function SlideCanvas({ spec }: { spec: SlideSpec
   const aspect = spec.meta.aspectRatio === "4:3" ? "4 / 3" : "16 / 9";
   const slideStyle: React.CSSProperties = useMemo(
     () => ({
-      background: getGradientBackground(tokens),
+      background: tokens.palette.neutral[8] || "#F8FAFC",
       color: tokens.palette.neutral[0],
     }),
     [tokens]
@@ -115,7 +85,6 @@ export const SlideCanvas = memo(function SlideCanvas({ spec }: { spec: SlideSpec
             width: "0.12in",
             height: "100%",
             background: tokens.palette.primary,
-            boxShadow: "3px 0 12px rgba(0,0,0,0.15)",
           }}
         />
         {/* Top-right glaze */}
@@ -136,7 +105,7 @@ export const SlideCanvas = memo(function SlideCanvas({ spec }: { spec: SlideSpec
           aria-hidden
           style={{
             position: "absolute",
-            bottom: "0.8in",
+            bottom: "0.2in",
             left: "0.3in",
             width: "2.5in",
             height: "0.6in",
@@ -297,27 +266,13 @@ const Title = memo(function Title({
         lineHeight: lh.compact ?? 1.2,
         color: tokens.palette.primary,
         margin: 0,
-        marginBottom: "8px",
+        marginBottom: "12px",
         textAlign: align ?? "left",
-        letterSpacing: "0.5px",
-        paddingBottom: "12px",
-        borderBottom: `3px solid ${tokens.palette.primary}`,
         position: "relative",
+        letterSpacing: "-0.02em",
       }}
     >
       {text}
-      <span
-        style={{
-          display: "inline-block",
-          width: "9px",
-          height: "9px",
-          borderRadius: "50%",
-          backgroundColor: tokens.palette.accent,
-          marginLeft: "12px",
-          verticalAlign: "middle",
-          boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-        }}
-      />
     </h2>
   );
 });
@@ -336,7 +291,7 @@ const Subtitle = memo(function Subtitle({ text, tokens }: { text: string; tokens
         color: tokens.palette.neutral[3] ?? "#64748B",
         margin: 0,
         marginTop: "4px",
-        letterSpacing: "0.2px",
+        letterSpacing: "-0.01em",
       }}
     >
       {text}
@@ -356,7 +311,7 @@ const Bullets = memo(function Bullets({
   const s = tokens.typography.sizes;
   const w = tokens.typography.weights;
   const lh = tokens.typography.lineHeights;
-  const gap = variant === "compact" ? 8 : 12;
+  const gap = variant === "compact" ? 10 : 14;
 
   return (
     <ul
@@ -635,10 +590,8 @@ function getLegendProps(pos?: "none" | "right" | "bottom") {
   if (pos === "right") {
     return { layout: "vertical" as const, align: "right" as const, verticalAlign: "middle" as const };
   }
-  if (pos === "bottom") {
-    return { layout: "horizontal" as const, align: "center" as const, verticalAlign: "bottom" as const };
-  }
-  return { layout: "horizontal" as const, align: "center" as const, verticalAlign: "top" as const };
+  // Default to bottom when unspecified (matches schema semantics)
+  return { layout: "horizontal" as const, align: "center" as const, verticalAlign: "bottom" as const };
 }
 
 /* --------------------------------- Images ---------------------------------- */
@@ -727,49 +680,7 @@ function Placeholder({ text, tokens }: { text: string; tokens: Tokens }) {
   );
 }
 
-function getGradientBackground(tokens: Tokens): string {
-  const pattern = tokens.pattern || "split";
-  const primary = tokens.palette.primary || "#6366F1";
-  const accent = tokens.palette.accent || "#EC4899";
-  const neutralLight = tokens.palette.neutral[8] || "#F8FAFC";
-  const neutralMid = tokens.palette.neutral[5] || "#94A3B8";
 
-  switch (pattern) {
-    case "hero":
-      return `linear-gradient(180deg, ${neutralLight} 0%, ${hexWithAlpha(primary, 0.08)} 50%, ${hexWithAlpha(
-        accent,
-        0.05
-      )} 100%)`;
-    case "minimal":
-      return `radial-gradient(ellipse at center, ${neutralLight} 0%, ${hexWithAlpha(neutralMid, 0.05)} 100%)`;
-    case "data-focused":
-      return `linear-gradient(90deg, ${neutralLight} 0%, ${hexWithAlpha(accent, 0.06)} 100%)`;
-    case "split":
-      return `linear-gradient(135deg, ${neutralLight} 0%, ${hexWithAlpha(primary, 0.05)} 50%, ${neutralLight} 100%)`;
-    case "asymmetric":
-      return `linear-gradient(120deg, ${neutralLight} 0%, ${hexWithAlpha(accent, 0.08)} 60%, ${hexWithAlpha(
-        primary,
-        0.05
-      )} 100%)`;
-    case "grid":
-      return `radial-gradient(circle at 50% 50%, ${neutralLight} 0%, ${hexWithAlpha(neutralMid, 0.04)} 100%)`;
-    default:
-      return `linear-gradient(135deg, ${neutralLight} 0%, ${hexWithAlpha(neutralMid, 0.03)} 50%, ${neutralLight} 100%)`;
-  }
-}
-
-function hexWithAlpha(hex: string, alpha: number): string {
-  const a = Math.round(alpha * 255)
-    .toString(16)
-    .padStart(2, "0");
-  const clean = hex.replace("#", "");
-  if (clean.length === 3) {
-    const [r, g, b] = clean.split("").map((c) => c + c);
-    return `#${r}${g}${b}${a}`;
-  }
-  if (clean.length === 6) return `#${clean}${a}`;
-  return hex;
-}
 
 /* ------------------------------- Number fmt -------------------------------- */
 

@@ -133,65 +133,14 @@ export function validatePayloadSize(
   next();
 }
 
-/**
- * Sanitize and validate prompt input
- */
-export function sanitizePrompt(prompt: string): string {
-  if (!prompt || typeof prompt !== "string") {
-    throw new Error("Prompt must be a non-empty string");
-  }
-
-  // Trim whitespace
-  let sanitized = prompt.trim();
-
-  // Max length: 2000 characters
-  if (sanitized.length > 2000) {
-    sanitized = sanitized.slice(0, 2000);
-  }
-
-  // Min length: 3 characters
-  if (sanitized.length < 3) {
-    throw new Error("Prompt must be at least 3 characters");
-  }
-
-  return sanitized;
-}
-
 /* -------------------------------------------------------------------------- */
 /*                         Abuse Detection                                    */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Basic heuristics for detecting obvious abuse/misuse
+ * Note: sanitizePrompt and moderateContent are now in aiHelpers.ts for centralization.
+ * This module focuses on request-level security (rate limiting, payload validation, etc.)
  */
-export function detectAbuse(prompt: string): { isAbusive: boolean; reason?: string } {
-  // Check for excessive repetition (e.g., "aaaa...aaaa")
-  const repetitionPattern = /(.)\1{20,}/;
-  if (repetitionPattern.test(prompt)) {
-    return { isAbusive: true, reason: "Excessive character repetition detected" };
-  }
-
-  // Check for excessive URLs
-  const urlCount = (prompt.match(/https?:\/\//g) || []).length;
-  if (urlCount > 5) {
-    return { isAbusive: true, reason: "Too many URLs in prompt" };
-  }
-
-  // Check for common spam patterns
-  const spamPatterns = [
-    /viagra|cialis|casino|lottery|prize/i,
-    /click here|buy now|limited offer/i,
-    /free money|guaranteed|no risk/i,
-  ];
-
-  for (const pattern of spamPatterns) {
-    if (pattern.test(prompt)) {
-      return { isAbusive: true, reason: "Spam pattern detected" };
-    }
-  }
-
-  return { isAbusive: false };
-}
 
 /* -------------------------------------------------------------------------- */
 /*                         Request Tracing                                    */

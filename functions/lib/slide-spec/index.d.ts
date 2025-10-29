@@ -350,6 +350,8 @@ export declare const SlideSpecZ: z.ZodObject<{
 export type SlideSpec = z.infer<typeof SlideSpecZ>;
 /** Convenience alias for import symmetry. */
 export type SlideSpecV1 = SlideSpec;
+/** CSS pixels per inch (96 dpi standard for web/screen rendering) */
+export declare const PX_PER_IN = 96;
 /** Recommended 9‑step neutral ramp (dark → light) */
 export declare const DEFAULT_NEUTRAL_9: readonly string[];
 /** Minimal, readable typography defaults */

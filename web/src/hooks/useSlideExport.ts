@@ -1,34 +1,34 @@
 import { useState, useCallback } from "react";
-import { apiExport, apiExportPNG, apiExportPDF, downloadBlob } from "@/lib/api";
+import { apiExport, apiExportPNG, apiExportPDF } from "@/lib/api";
 import { logger } from "@/lib/logger";
+import { handleError, retryWithBackoff } from "@/lib/errorHandler";
+import {
+  downloadBlob,
+  generateFilename,
+  validateExportBlob,
+  type ExportFormat,
+} from "@/lib/exportHandler";
 import type { SlideSpecV1 } from "@/types/SlideSpecV1";
 
-export type ExportFormat = "pptx" | "png" | "pdf";
+export { type ExportFormat } from "@/lib/exportHandler";
 
 export function useSlideExport() {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const exportSlide = useCallback(
-    async (spec: SlideSpecV1, format: ExportFormat = "pptx", filename?: string) => {
+    async (spec: SlideSpecV1, format: ExportFormat = "pptx", customFilename?: string) => {
       setError(null);
       setExporting(true);
 
       const startTime = performance.now();
-      const defaultFilename = {
-        pptx: "plzfixthx-slide.pptx",
-        png: "plzfixthx-slide.png",
-        pdf: "plzfixthx-slide.pdf",
-      }[format];
-
-      const finalFilename = filename || defaultFilename;
-      logger.userAction("export_slide", { format, filename: finalFilename });
+      logger.userAction("export_slide", { format, filename: customFilename });
 
       try {
         let blob: Blob;
 
         if (format === "pptx") {
-          blob = await apiExport(spec);
+          blob = await retryWithBackoff(() => apiExport(spec), 2, 500);
         } else if (format === "png" || format === "pdf") {
           // For PNG/PDF, we need the DOM element
           const element = document.querySelector('[aria-label="Slide preview"]') as HTMLElement;
@@ -37,30 +37,38 @@ export function useSlideExport() {
           }
 
           if (format === "png") {
-            blob = await apiExportPNG(element);
+            blob = await retryWithBackoff(() => apiExportPNG(element), 2, 500);
           } else {
-            blob = await apiExportPDF(element);
+            blob = await retryWithBackoff(() => apiExportPDF(element), 2, 500);
           }
         } else {
           throw new Error(`Unsupported export format: ${format}`);
         }
 
-        downloadBlob(blob, finalFilename);
+        // Validate blob
+        if (!validateExportBlob(blob, format)) {
+          throw new Error(`Invalid ${format.toUpperCase()} export`);
+        }
 
         const duration = performance.now() - startTime;
+        const filename = generateFilename(format, customFilename);
+
+        downloadBlob(blob, filename);
+
         logger.performance("slide_export", duration);
         logger.info("Slide exported successfully", {
           format,
-          filename: finalFilename,
+          filename,
           size: blob.size,
           duration,
         });
 
         return true;
       } catch (e: unknown) {
-        const errorMessage = e instanceof Error ? e.message : "Failed to export slide";
-        setError(errorMessage);
-        logger.error("Failed to export slide", e, { format, filename: finalFilename });
+        const duration = performance.now() - startTime;
+        const appError = handleError(e, { format, duration });
+        setError(appError.userMessage);
+        logger.error("Failed to export slide", e, { format, duration });
         return false;
       } finally {
         setExporting(false);

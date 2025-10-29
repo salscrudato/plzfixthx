@@ -7,7 +7,7 @@ const baseOverride = import.meta.env.VITE_FUNCTIONS_BASE_URL;
 const useProd = !!import.meta.env.VITE_USE_PRODUCTION_FUNCTIONS;
 
 /** Resolve base URL for Cloud Functions (supports local emulator) */
-function baseUrl(): string {
+export function baseUrl(): string {
   // Prefer explicit override
   if (baseOverride) return baseOverride;
 
@@ -117,35 +117,37 @@ export async function apiExportMultiple(specs: SlideSpec[]): Promise<Blob> {
   return postBlob("/exportPPTX", { specs });
 }
 
-/** Export slide preview as PNG */
+/** Export slide preview as PNG (3x scale for crisp rendering) */
 export async function apiExportPNG(element: HTMLElement): Promise<Blob> {
   const { default: html2canvas } = await import("html2canvas");
   const canvas = await html2canvas(element, {
-    scale: 2,
+    scale: 3, // 3x scale for professional quality
     useCORS: true,
     allowTaint: true,
     backgroundColor: "#ffffff",
+    logging: false,
   });
   return new Promise((resolve) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
-    }, "image/png");
+    }, "image/png", 0.95); // 95% quality
   });
 }
 
-/** Export slide preview as PDF */
+/** Export slide preview as PDF (3x scale for crisp rendering) */
 export async function apiExportPDF(element: HTMLElement): Promise<Blob> {
   const { default: html2canvas } = await import("html2canvas");
   const { jsPDF } = await import("jspdf");
 
   const canvas = await html2canvas(element, {
-    scale: 2,
+    scale: 3, // 3x scale for professional quality
     useCORS: true,
     allowTaint: true,
     backgroundColor: "#ffffff",
+    logging: false,
   });
 
-  const imgData = canvas.toDataURL("image/png");
+  const imgData = canvas.toDataURL("image/png", 0.95); // 95% quality
   const pdf = new jsPDF({
     orientation: canvas.width > canvas.height ? "landscape" : "portrait",
     unit: "mm",
@@ -159,14 +161,4 @@ export async function apiExportPDF(element: HTMLElement): Promise<Blob> {
   });
 }
 
-/** Utility to trigger a browser download */
-export function downloadBlob(blob: Blob, filename = "plzfixthx-presentation.pptx") {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
+// Note: downloadBlob has been moved to exportHandler.ts for centralized export management

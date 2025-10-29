@@ -514,6 +514,9 @@ export type SlideSpecV1 = SlideSpec;
 /*                            Safe Defaults & Utils                           */
 /* -------------------------------------------------------------------------- */
 
+/** CSS pixels per inch (96 dpi standard for web/screen rendering) */
+export const PX_PER_IN = 96;
+
 /** Recommended 9‑step neutral ramp (dark → light) */
 export const DEFAULT_NEUTRAL_9 = Object.freeze([
   "#0F172A", "#1E293B", "#334155", "#475569", "#64748B",
