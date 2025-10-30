@@ -31,25 +31,28 @@ function fixImports(dir) {
       // Match: from "./something" or from '../something'
       const lines = content.split('\n');
       const fixedLines = lines.map(line => {
-        // Fix @plzfixthx/slide-spec imports to use relative path
-        if (line.includes('@plzfixthx/slide-spec')) {
-          return line.replace(
-            /@plzfixthx\/slide-spec/g,
-            () => {
-              // Calculate relative path based on file location
-              // Files in lib/ use ./slide-spec/index.js
-              // Files in lib/pptxBuilder/ use ../slide-spec/index.js
-              const fileDir = path.dirname(filePath);
-              const libDir = path.join(__dirname, '../lib');
-              const slideSpecPath = path.join(libDir, 'slide-spec', 'index.js');
-              let relativePath = path.relative(fileDir, slideSpecPath).replace(/\\/g, '/');
-              // Ensure relative paths start with ./ or ../
-              if (!relativePath.startsWith('.')) {
-                relativePath = './' + relativePath;
+        // Fix @plzfixthx/* imports to use relative paths
+        const packages = ['slide-spec', 'errors', 'utils', 'validation'];
+        for (const pkg of packages) {
+          if (line.includes(`@plzfixthx/${pkg}`)) {
+            return line.replace(
+              new RegExp(`@plzfixthx/${pkg}`, 'g'),
+              () => {
+                // Calculate relative path based on file location
+                // Files in lib/ use ./package/index.js
+                // Files in lib/middleware/ use ../package/index.js
+                const fileDir = path.dirname(filePath);
+                const libDir = path.join(__dirname, '../lib');
+                const pkgPath = path.join(libDir, pkg, 'index.js');
+                let relativePath = path.relative(fileDir, pkgPath).replace(/\\/g, '/');
+                // Ensure relative paths start with ./ or ../
+                if (!relativePath.startsWith('.')) {
+                  relativePath = './' + relativePath;
+                }
+                return relativePath;
               }
-              return relativePath;
-            }
-          );
+            );
+          }
         }
         // Match import statements with relative paths
         if (line.includes('from "') || line.includes("from '")) {

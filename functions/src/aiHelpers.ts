@@ -6,6 +6,7 @@ import { ENHANCED_SYSTEM_PROMPT } from "./prompts";
 import { generatePalette } from "./colorPaletteGenerator";
 import { randomUUID } from "crypto";
 import { contrastRatio, hexToRgb } from "@plzfixthx/slide-spec";
+import { retryWithBackoff as sharedRetryWithBackoff } from "@plzfixthx/utils";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -83,32 +84,11 @@ function validateBulletCount(bullets: any[], maxPerGroup: number) {
 /*                         Retry with exponential backoff                      */
 /* -------------------------------------------------------------------------- */
 
-export async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
-  maxRetries = 3,
-  baseDelay = 800
-): Promise<T> {
-  let lastError: Error | undefined;
-
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error as Error;
-
-      if (attempt < maxRetries - 1) {
-        const jitter = Math.floor(Math.random() * 300); // Increased jitter for better distribution
-        const delay = Math.min(16000, baseDelay * Math.pow(2, attempt)) + jitter; // Increased max delay
-        logger.warn(`Attempt ${attempt + 1} failed; retrying in ${delay}ms`, {
-          error: (lastError as any)?.message || String(lastError),
-        });
-        await new Promise((r) => setTimeout(r, delay));
-      }
-    }
-  }
-
-  throw lastError || new Error("Max retries exceeded");
-}
+/**
+ * Re-export shared retry function for backward compatibility
+ * Shared implementation is in @plzfixthx/utils
+ */
+export const retryWithBackoff = sharedRetryWithBackoff;
 
 /* -------------------------------------------------------------------------- */
 /*                      OpenAI‑compatible structured outputs                   */

@@ -1,0 +1,19 @@
+{
+  "name": "@plzfixthx/validation",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf lib"
+  },
+  "dependencies": {
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  },
+  "private": true
+}
+

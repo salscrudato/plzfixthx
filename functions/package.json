@@ -2,7 +2,7 @@
   "name": "functions",
   "type": "module",
   "scripts": {
-    "build": "npm --prefix ../shared/slideSpec run build && tsc && node scripts/fix-esm-imports.js && node scripts/copy-shared-package.js",
+    "build": "npm --prefix ../shared/slideSpec run build && npm --prefix ../shared/errors run build && npm --prefix ../shared/utils run build && npm --prefix ../shared/validation run build && tsc && node scripts/fix-esm-imports.js && node scripts/copy-shared-package.js",
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "npm run build && firebase deploy --only functions",
     "lint": "eslint --ext .ts src",
@@ -16,8 +16,10 @@
   "main": "lib/index.js",
   "dependencies": {
     "@plzfixthx/slide-spec": "file:../shared/slideSpec",
+    "@plzfixthx/errors": "file:../shared/errors",
+    "@plzfixthx/utils": "file:../shared/utils",
+    "@plzfixthx/validation": "file:../shared/validation",
     "@types/sharp": "^0.31.1",
-    "cors": "^2.8.5",
     "firebase-admin": "^12.6.0",
     "firebase-functions": "^6.0.1",
     "pptxgenjs": "^4.0.1",

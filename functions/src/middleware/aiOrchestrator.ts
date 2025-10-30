@@ -10,34 +10,14 @@
  */
 
 import * as logger from "firebase-functions/logger";
-import { z } from "zod";
 import { callAIWithRetry, enhanceSlideSpec, sanitizePrompt, moderateContent, ValidationError } from "../aiHelpers";
 import { SlideSpecZ, type SlideSpecV1 } from "@plzfixthx/slide-spec";
-import {
-  STANDARD_GRID,
-  EXECUTIVE_MARGINS,
-  TYPOGRAPHY_SCALE,
-  FONT_FAMILIES,
-} from "../designSystem";
+import { runPlanner } from "./planner";
+import { enforceSlideSpecRules } from "./rules";
 
-/* -------------------------------------------------------------------------- */
-/*                            Intent Plan Schema                              */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Planner output schema - extracts high-level intent from user prompt
- */
-export const IntentPlanZ = z.object({
-  intent: z.enum(["explanatory", "action", "analytical"]),
-  audience: z.string().max(100),
-  tone: z.enum(["formal", "conversational", "technical", "executive"]),
-  slidePattern: z.enum(["overview", "2x2", "timeline", "bar-chart", "compare-contrast", "process-flow", "hero"]),
-  brandHints: z.array(z.string()).max(5).optional(),
-  dataHints: z.array(z.string()).max(10).optional(),
-  visualPlan: z.enum(["chart", "table", "hero", "illustration", "minimal"]),
-});
-
-export type IntentPlan = z.infer<typeof IntentPlanZ>;
+// Re-export for backward compatibility
+export { IntentPlanZ, type IntentPlan } from "./planner";
+export { enforceSlideSpecRules } from "./rules";
 
 /* -------------------------------------------------------------------------- */
 /*                            Request Pipeline                                */
@@ -101,206 +81,8 @@ export async function validateAIRequest(request: AIRequest): Promise<void> {
 }
 
 /* -------------------------------------------------------------------------- */
-/*                         Rule Enforcement (Post-Gen)                        */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Enforce strict content rules on generated spec (deterministic, no AI calls)
- */
-export function enforceSlideSpecRules(spec: SlideSpecV1): SlideSpecV1 {
-  const enforced = { ...spec };
-
-  // Ensure title ≤60 chars
-  if (enforced.content.title.text.length > 60) {
-    enforced.content.title.text = enforced.content.title.text.slice(0, 57) + "...";
-  }
-
-  // Ensure subtitle ≤100 chars
-  if (enforced.content.subtitle?.text && enforced.content.subtitle.text.length > 100) {
-    enforced.content.subtitle.text = enforced.content.subtitle.text.slice(0, 97) + "...";
-  }
-
-  // Enforce bullet limits: max 7 items per group, ≤80 chars each, max 3 groups
-  if (enforced.content.bullets && Array.isArray(enforced.content.bullets)) {
-    enforced.content.bullets = enforced.content.bullets.slice(0, 3).map((group: any) => {
-      if (!group.items || !Array.isArray(group.items)) return group;
-      return {
-        ...group,
-        items: group.items.slice(0, 7).map((item: any) => ({
-          ...item,
-          text: item.text.length > 80 ? item.text.slice(0, 77) + "..." : item.text,
-        })),
-      };
-    });
-
-    // Simple lexical de-duplication across all bullets
-    const seenTexts = new Set<string>();
-    enforced.content.bullets = enforced.content.bullets.map((group: any) => ({
-      ...group,
-      items: group.items.filter((item: any) => {
-        const normalized = item.text.toLowerCase().trim();
-        if (seenTexts.has(normalized)) return false;
-        seenTexts.add(normalized);
-        return true;
-      }),
-    })).filter((group: any) => group.items.length > 0);
-  }
-
-  // Enforce callout variant validation
-  if (enforced.content.callouts && Array.isArray(enforced.content.callouts)) {
-    const validVariants = ["note", "success", "warning", "danger"];
-    enforced.content.callouts = enforced.content.callouts.map((callout: any) => ({
-      ...callout,
-      variant: validVariants.includes(callout.variant) ? callout.variant : "note",
-    }));
-  }
-
-  // Ensure design.whitespace.breathingRoom default
-  if (!enforced.design) {
-    enforced.design = { pattern: "hero" };
-  }
-  if (!enforced.design.whitespace) {
-    enforced.design.whitespace = {};
-  }
-  if (enforced.design.whitespace.breathingRoom === undefined) {
-    enforced.design.whitespace.breathingRoom = 0.35;
-  }
-
-  // Ensure required meta fields
-  if (!enforced.meta.theme) {
-    enforced.meta.theme = "Professional";
-  }
-  if (!enforced.meta.aspectRatio) {
-    enforced.meta.aspectRatio = "16:9";
-  }
-
-  // Enforce design system grid (12×8, executive margins)
-  if (!enforced.layout) {
-    enforced.layout = {
-      grid: {
-        rows: STANDARD_GRID.rows,
-        cols: STANDARD_GRID.cols,
-        gutter: STANDARD_GRID.gutter * 96,
-        margin: {
-          t: EXECUTIVE_MARGINS.top * 96,
-          r: EXECUTIVE_MARGINS.right * 96,
-          b: EXECUTIVE_MARGINS.bottom * 96,
-          l: EXECUTIVE_MARGINS.left * 96,
-        },
-      },
-      regions: [],
-      anchors: [],
-    };
-  } else {
-    // Override AI-generated grid with design system defaults
-    enforced.layout.grid = {
-      rows: STANDARD_GRID.rows, // 8 rows
-      cols: STANDARD_GRID.cols, // 12 cols
-      gutter: STANDARD_GRID.gutter * 96, // Convert inches to pixels (0.125in * 96dpi = 12px)
-      margin: {
-        t: EXECUTIVE_MARGINS.top * 96, // Convert inches to pixels (0.6in * 96dpi = 57.6px)
-        r: EXECUTIVE_MARGINS.right * 96, // Convert inches to pixels (0.9in * 96dpi = 86.4px)
-        b: EXECUTIVE_MARGINS.bottom * 96, // Convert inches to pixels (0.6in * 96dpi = 57.6px)
-        l: EXECUTIVE_MARGINS.left * 96, // Convert inches to pixels (0.9in * 96dpi = 86.4px)
-      },
-    };
-
-    // Enforce region bounds to fit within 8-row grid
-    if (enforced.layout.regions && Array.isArray(enforced.layout.regions)) {
-      enforced.layout.regions = enforced.layout.regions.map((region: any) => {
-        const maxRow = STANDARD_GRID.rows; // 8
-        const maxCol = STANDARD_GRID.cols; // 12
-
-        // Clamp rowStart to valid range (1 to maxRow)
-        const rowStart = Math.max(1, Math.min(region.rowStart, maxRow));
-
-        // Clamp colStart to valid range (1 to maxCol)
-        const colStart = Math.max(1, Math.min(region.colStart, maxCol));
-
-        // Clamp rowSpan so region doesn't exceed grid
-        const maxRowSpan = maxRow - rowStart + 1;
-        const rowSpan = Math.max(1, Math.min(region.rowSpan, maxRowSpan));
-
-        // Clamp colSpan so region doesn't exceed grid
-        const maxColSpan = maxCol - colStart + 1;
-        const colSpan = Math.max(1, Math.min(region.colSpan, maxColSpan));
-
-        return {
-          ...region,
-          rowStart,
-          colStart,
-          rowSpan,
-          colSpan,
-        };
-      });
-    }
-  }
-
-  // Ensure styleTokens exist with required fields
-  if (!enforced.styleTokens) {
-    enforced.styleTokens = {
-      palette: { primary: "#1E40AF", accent: "#F59E0B", neutral: [] },
-      typography: {
-        fonts: { sans: "Aptos, Calibri, Arial, sans-serif" },
-        sizes: { "step_-2": 12, "step_-1": 14, step_0: 16, step_1: 20, step_2: 24, step_3: 32 },
-        weights: { regular: 400, medium: 500, semibold: 600, bold: 700 },
-        lineHeights: { compact: 1.2, standard: 1.5 },
-      },
-      spacing: { base: 8, steps: [4, 8, 12, 16, 24, 32, 48, 64] },
-      radii: { sm: 4, md: 8, lg: 16 },
-      shadows: { sm: "0 1px 2px rgba(0,0,0,0.05)", md: "0 4px 6px rgba(0,0,0,0.1)", lg: "0 10px 15px rgba(0,0,0,0.1)" },
-      contrast: { minTextContrast: 7.0, minUiContrast: 3.0 },
-    };
-  }
-
-  // Enforce design system typography scale
-  if (!enforced.styleTokens.typography) {
-    enforced.styleTokens.typography = {
-      fonts: { sans: FONT_FAMILIES.primary },
-      sizes: {
-        "step_-2": TYPOGRAPHY_SCALE.caption, // 12pt
-        "step_-1": 14,
-        step_0: TYPOGRAPHY_SCALE.body, // 16pt
-        step_1: 20,
-        step_2: TYPOGRAPHY_SCALE.h2, // 24pt
-        step_3: TYPOGRAPHY_SCALE.display, // 44pt
-      },
-      weights: { regular: 400, medium: 500, semibold: 600, bold: 700 },
-      lineHeights: { compact: 1.2, standard: 1.5 },
-    };
-  } else {
-    // Override AI-generated typography with design system values
-    enforced.styleTokens.typography.fonts = { sans: FONT_FAMILIES.primary };
-    enforced.styleTokens.typography.sizes = {
-      "step_-2": TYPOGRAPHY_SCALE.caption, // 12pt
-      "step_-1": 14,
-      step_0: TYPOGRAPHY_SCALE.body, // 16pt
-      step_1: 20,
-      step_2: TYPOGRAPHY_SCALE.h2, // 24pt
-      step_3: TYPOGRAPHY_SCALE.display, // 44pt
-    };
-  }
-
-  return enforced;
-}
-
-/* -------------------------------------------------------------------------- */
 /*                            Processing Pipeline                             */
 /* -------------------------------------------------------------------------- */
-
-/**
- * Planner system prompt - extracts intent from user prompt
- */
-const PLANNER_PROMPT = `You are an expert slide intent analyzer. Extract the following from the user's prompt:
-- intent: "explanatory" (explain/describe/overview), "action" (optimize/improve/strategy), or "analytical" (analyze/compare/metrics)
-- audience: who is this for? (e.g., "executives", "technical team", "general audience")
-- tone: "formal", "conversational", "technical", or "executive"
-- slidePattern: "overview", "2x2", "timeline", "bar-chart", "compare-contrast", "process-flow", or "hero"
-- brandHints: any company/brand names mentioned (max 5)
-- dataHints: any explicit numbers, metrics, or data points mentioned (max 10)
-- visualPlan: "chart", "table", "hero", "illustration", or "minimal"
-
-Return ONLY valid JSON matching this schema. No markdown, no explanations.`;
 
 /**
  * Process AI request through two-stage pipeline
@@ -322,30 +104,9 @@ export async function processAIRequest(request: AIRequest): Promise<AIResponse> 
     const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
     // STAGE A: Planner - extract intent at low temperature
-    // Use gpt-4o-mini for planner to reduce token usage and cost
     const plannerStart = Date.now();
-    const plannerModel = "gpt-4o-mini"; // Cheaper, faster model for intent extraction
-    const planResult = await callAIWithRetry(
-      `${PLANNER_PROMPT}\n\nUser prompt: ${sanitized}`,
-      apiKey,
-      baseUrl,
-      plannerModel,
-      IntentPlanZ,
-      requestId,
-      0.1 // Low temperature for consistent intent extraction
-    );
-    const plan = planResult as IntentPlan;
+    const plan = await runPlanner(sanitized, requestId, apiKey, baseUrl);
     const plannerTime = Date.now() - plannerStart;
-
-    logger.info("Planner stage complete", {
-      requestId,
-      intent: plan.intent,
-      audience: plan.audience,
-      tone: plan.tone,
-      slidePattern: plan.slidePattern,
-      visualPlan: plan.visualPlan,
-      plannerTimeMs: plannerTime,
-    });
 
     // STAGE B: Generator - produce SlideSpec using planner output
     const generatorStart = Date.now();
@@ -404,7 +165,7 @@ Generate a professional slide that matches this intent and plan.`;
       requestId,
       processingTime,
       model,
-      tokensUsed: undefined, // Populated from response metadata if available
+      tokensUsed: undefined,
       plannerTokens: undefined,
       generatorTokens: undefined,
     };
@@ -526,39 +287,3 @@ export async function recoverFromAIError(
     return recoverFromAIError(retryError, request, retryCount + 1);
   }
 }
-
-/* -------------------------------------------------------------------------- */
-/*                            Performance Metrics                             */
-/* -------------------------------------------------------------------------- */
-
-/**
- * Track AI performance metrics for monitoring and optimization
- */
-export interface AIMetrics {
-  requestId: string;
-  promptLength: number;
-  processingTimeMs: number;
-  model: string;
-  success: boolean;
-  errorType?: string;
-  retryCount?: number;
-  tokensUsed?: number;
-}
-
-/**
- * Log AI performance metrics
- */
-export function logAIMetrics(metrics: AIMetrics): void {
-  logger.info("AI performance metrics", {
-    requestId: metrics.requestId,
-    promptLength: metrics.promptLength,
-    processingTimeMs: metrics.processingTimeMs,
-    model: metrics.model,
-    success: metrics.success,
-    errorType: metrics.errorType,
-    retryCount: metrics.retryCount,
-    tokensUsed: metrics.tokensUsed,
-    avgTimePerToken: metrics.tokensUsed ? (metrics.processingTimeMs / metrics.tokensUsed).toFixed(2) : undefined,
-  });
-}
-

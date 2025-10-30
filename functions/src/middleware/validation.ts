@@ -1,93 +1,49 @@
 /**
- * Validation Middleware
- * ====================
- * Request/response validation, schema enforcement, and data sanitization.
+ * Validation Middleware (Backend)
+ * ===============================
+ * Re-exports shared validation schemas and provides backend-specific validation.
+ * Core schemas are in @plzfixthx/validation
  */
 
 import * as logger from "firebase-functions/logger";
-import { z } from "zod";
+import { validateRequest as sharedValidateRequest } from "@plzfixthx/validation";
 
-/* -------------------------------------------------------------------------- */
-/*                            Request Validation                              */
-/* -------------------------------------------------------------------------- */
-
-export const GenerateSlideSpecRequestSchema = z.object({
-  prompt: z.string().min(1).max(5000),
-  userId: z.string().optional(),
-  requestId: z.string().optional(),
-});
-
-export type GenerateSlideSpecRequest = z.infer<typeof GenerateSlideSpecRequestSchema>;
-
-export const ExportPPTXRequestSchema = z.object({
-  spec: z.record(z.string(), z.unknown()),
-  filename: z.string().optional(),
-});
-
-export type ExportPPTXRequest = z.infer<typeof ExportPPTXRequestSchema>;
-
-/* -------------------------------------------------------------------------- */
-/*                            Validation Functions                            */
-/* -------------------------------------------------------------------------- */
+// Re-export shared schemas and functions
+export {
+  GenerateSlideSpecRequestSchema,
+  ExportPPTXRequestSchema,
+  isValidHexColor,
+  isValidEmail,
+  isValidUrl,
+  ValidationMessages,
+  type GenerateSlideSpecRequest,
+  type ExportPPTXRequest,
+} from "@plzfixthx/validation";
 
 /**
- * Validate and parse request body
+ * Validate and parse request body (with logging)
  */
 export function validateRequest<T>(
   data: unknown,
-  schema: z.ZodSchema<T>,
+  schema: any,
   context: string
 ): T {
   try {
-    return schema.parse(data);
+    return sharedValidateRequest(data, schema, context);
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      const errors = error.issues.map((e) => ({
-        path: e.path.join("."),
-        message: e.message,
-      }));
-      logger.warn(`Validation failed for ${context}`, { errors });
-      throw new Error(`Invalid ${context}: ${errors[0]?.message}`);
-    }
+    logger.warn(`Validation failed for ${context}`, { error: String(error) });
     throw error;
   }
 }
 
 /**
- * Note: sanitizeString and sanitizeFilename have been moved to httpHelpers.ts
- * to avoid duplication. Import from there instead.
+ * Note: sanitizeString and sanitizeFilename are in httpHelpers.ts
  */
 import { sanitizeString as sanitizeStringImpl } from "../httpHelpers";
 export { sanitizeFilename, sanitizeString } from "../httpHelpers";
 
 // Use the imported function locally
 const sanitizeString = sanitizeStringImpl;
-
-/**
- * Validate hex color
- */
-export function isValidHexColor(color: string): boolean {
-  return /^#[0-9A-F]{6}([0-9A-F]{2})?$/i.test(color);
-}
-
-/**
- * Validate email
- */
-export function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-/**
- * Validate URL
- */
-export function isValidUrl(url: string): boolean {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /* -------------------------------------------------------------------------- */
 /*                            Data Sanitization                               */
@@ -146,21 +102,4 @@ export function validateResponse(data: unknown, expectedType: string): boolean {
 
   return true;
 }
-
-/* -------------------------------------------------------------------------- */
-/*                            Error Messages                                  */
-/* -------------------------------------------------------------------------- */
-
-export const ValidationMessages = {
-  PROMPT_EMPTY: "Prompt cannot be empty",
-  PROMPT_TOO_LONG: "Prompt exceeds maximum length (5000 characters)",
-  INVALID_SPEC: "Invalid slide specification",
-  INVALID_COLOR: "Invalid color format",
-  INVALID_EMAIL: "Invalid email address",
-  INVALID_URL: "Invalid URL",
-  INVALID_FILENAME: "Invalid filename",
-  MISSING_REQUIRED_FIELD: (field: string) => `Missing required field: ${field}`,
-  INVALID_FIELD_TYPE: (field: string, expected: string) =>
-    `Field '${field}' must be ${expected}`,
-} as const;
 

@@ -1,3 +1,28 @@
+/**
+ * System Prompts for AI Slide Generation
+ * ======================================
+ *
+ * ENHANCED_SYSTEM_PROMPT:
+ * - Use for: Complex, high-stakes presentations requiring consulting-firm quality
+ * - Features: Detailed design principles, industry-specific guidance, premium visual touches
+ * - Cost: Higher token usage (~2000 tokens)
+ * - Quality: Boardroom-ready, sophisticated, MECE-structured
+ * - Best for: Executive presentations, strategy decks, client-facing materials
+ *
+ * SIMPLE_SYSTEM_PROMPT:
+ * - Use for: Quick iterations, cost-sensitive scenarios, straightforward content
+ * - Features: Core rules only, minimal guidance, efficient token usage
+ * - Cost: Lower token usage (~500 tokens)
+ * - Quality: Professional, clean, functional
+ * - Best for: Internal communications, rapid prototyping, bulk generation
+ *
+ * Selection Logic:
+ * - If prompt is complex/strategic → ENHANCED
+ * - If prompt is simple/tactical → SIMPLE
+ * - If user is premium/enterprise → ENHANCED
+ * - If user is free/trial → SIMPLE
+ */
+
 /** World-class system prompt for consulting-firm-quality slide generation */
 export const ENHANCED_SYSTEM_PROMPT = `You are the elite SlideSpec generator for plzfixthx, a premier AI-powered tool for creating boardroom-ready PowerPoint slides. Produce slides that embody the precision, clarity, and visual sophistication of top-tier strategy consulting firms like McKinsey, BCG, or Bain.
 

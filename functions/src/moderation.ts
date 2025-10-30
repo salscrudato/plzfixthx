@@ -3,6 +3,23 @@
  * =========================
  * Handles content safety checks, abuse detection, and prompt validation.
  * Extracted from aiHelpers.ts for better code organization.
+ *
+ * Moderation Flow:
+ * ================
+ * 1. aiOrchestrator.validateAIRequest() calls moderateContent()
+ * 2. moderateContent() checks for high-risk categories (violence, drugs, hate speech, etc.)
+ * 3. If unsafe, throws ModerationError with category details
+ * 4. If safe, returns { safe: true }
+ * 5. sanitizePrompt() removes jailbreak attempts and code fences
+ * 6. Sanitized prompt is passed to AI pipeline (Planner → Generator)
+ *
+ * Key Functions:
+ * - moderateContent(prompt): Checks for unsafe content, returns { safe, reason?, categories? }
+ * - sanitizePrompt(prompt): Removes code fences, jailbreak attempts, truncates to max length
+ *
+ * Integration Points:
+ * - Called from: aiOrchestrator.validateAIRequest()
+ * - Exported to: aiHelpers.ts (re-exported for backward compatibility)
  */
 
 import * as logger from "firebase-functions/logger";

@@ -14,6 +14,9 @@
   },
   "dependencies": {
     "@plzfixthx/slide-spec": "file:../shared/slideSpec",
+    "@plzfixthx/errors": "file:../shared/errors",
+    "@plzfixthx/utils": "file:../shared/utils",
+    "@plzfixthx/validation": "file:../shared/validation",
     "firebase": "^12.4.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.3",

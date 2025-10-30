@@ -7,45 +7,23 @@
  * Expanded utilities for color manipulation
  */
 
+import { hexToRgb, rgbToHex, contrastRatio } from "@plzfixthx/slide-spec";
+
 /* -------------------------------------------------------------------------- */
 /*                          Color Utilities                                   */
 /* -------------------------------------------------------------------------- */
 
-/** Convert hex to RGB */
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  const clean = hex.replace("#", "").slice(0, 6);
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
-  return { r, g, b };
-}
-
-/** Convert RGB to hex */
-function rgbToHex(r: number, g: number, b: number): string {
-  return `#${[r, g, b].map((x) => Math.round(x).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
-}
-
-/** Calculate relative luminance (WCAG) */
-function getLuminance(hex: string): number {
-  const { r, g, b } = hexToRgb(hex);
-  const norm = (c: number) => c / 255;
-  const lin = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
-  return 0.2126 * lin(norm(r)) + 0.7152 * lin(norm(g)) + 0.0722 * lin(norm(b));
-}
-
-/** Calculate contrast ratio (WCAG) */
+/** Calculate contrast ratio (WCAG) - wrapper for shared utility */
 function getContrastRatio(hex1: string, hex2: string): number {
-  const l1 = getLuminance(hex1);
-  const l2 = getLuminance(hex2);
-  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  return contrastRatio(hex1, hex2);
 }
 
 /** Lighten or darken color by percentage */
 function adjustColor(hex: string, percent: number): string {
-  const { r, g, b } = hexToRgb(hex);
+  const rgb = hexToRgb(hex);
   const factor = percent / 100;
   const adjust = (c: number) => Math.min(255, Math.max(0, c + c * factor));
-  return rgbToHex(adjust(r), adjust(g), adjust(b));
+  return rgbToHex(adjust(rgb[0]), adjust(rgb[1]), adjust(rgb[2]));
 }
 
 /** Generate neutral ramp (9 colors from dark to light) with consulting-style grays */
@@ -56,9 +34,9 @@ function generateNeutralRamp(baseDark = "#0F172A", baseLight = "#F8FAFC"): strin
 
   for (let i = 0; i < 9; i++) {
     const t = i / 8;
-    const r = Math.round(darkRgb.r + (lightRgb.r - darkRgb.r) * t);
-    const g = Math.round(darkRgb.g + (lightRgb.g - darkRgb.g) * t);
-    const b = Math.round(darkRgb.b + (lightRgb.b - darkRgb.b) * t);
+    const r = Math.round(darkRgb[0] + (lightRgb[0] - darkRgb[0]) * t);
+    const g = Math.round(darkRgb[1] + (lightRgb[1] - darkRgb[1]) * t);
+    const b = Math.round(darkRgb[2] + (lightRgb[2] - darkRgb[2]) * t);
     ramp.push(rgbToHex(r, g, b));
   }
 
