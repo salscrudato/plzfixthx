@@ -319,7 +319,7 @@ export async function processAIRequest(request: AIRequest): Promise<AIResponse> 
 
     const apiKey = process.env.OPENAI_API_KEY || "";
     const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
-    const model = process.env.OPENAI_MODEL || "gpt-4o";
+    const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
     // STAGE A: Planner - extract intent at low temperature
     // Use gpt-4o-mini for planner to reduce token usage and cost

@@ -66,7 +66,7 @@ const rateLimitCollection = "rate_limits";
 async function callVendor(prompt: string): Promise<SlideSpec> {
   const key = AI_API_KEY.value() ?? "";
   const base = AI_BASE_URL.value() || "https://api.openai.com/v1";
-  const models = [AI_MODEL_PRIMARY.value() || "gpt-4o", AI_MODEL_FALLBACK.value() || "gpt-4o-mini"];
+  const models = [AI_MODEL_PRIMARY.value() || "gpt-4o-mini", AI_MODEL_FALLBACK.value() || "gpt-4o-mini"];
 
   if (!key) {
     logger.warn("AI_API_KEY not set — using fallback");
